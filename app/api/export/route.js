@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { getPool, initSchema } from "@/lib/db";
+import { getPool, initSchema, getActiveProfile } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,18 +9,26 @@ function csvEscape(v) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-// Bundles every finished asset into a zip: <category>/<filename>.png + manifest.csv
+function slugName(s) {
+  return String(s || "assets").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "assets";
+}
+
+// Bundles every finished asset FROM THE ACTIVE LOADOUT into a zip:
+// <category>/<filename>.png + manifest.csv. Other loadouts aren't included.
 export async function GET() {
   try {
     await initSchema();
     const p = getPool();
+    const prof = await getActiveProfile();
+    const activeId = prof?.id || null;
     const r = await p.query(
-      `SELECT category, filename, name, rarity, size, image, created_at
-         FROM jobs WHERE status='done' AND image IS NOT NULL
-        ORDER BY category, filename`
+      `SELECT category, filename, name, rarity, size, image, created_at, id
+         FROM jobs WHERE status='done' AND image IS NOT NULL AND profile_id = $1
+        ORDER BY category, filename`,
+      [activeId]
     );
     if (r.rows.length === 0) {
-      return new Response("Inga assets att exportera.", { status: 404 });
+      return new Response("Inga assets att exportera i den här loadouten.", { status: 404 });
     }
 
     const zip = new JSZip();
@@ -45,10 +53,11 @@ export async function GET() {
 
     const buf = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
     const stamp = new Date().toISOString().slice(0, 10);
+    const tag = slugName(prof?.name);
     return new Response(buf, {
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="assets-${stamp}.zip"`,
+        "Content-Disposition": `attachment; filename="${tag}-assets-${stamp}.zip"`,
       },
     });
   } catch (err) {

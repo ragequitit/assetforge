@@ -18,8 +18,9 @@ Fire Boots | Gear | Epic | | wreathed in flames, embers drifting up
 Dragon Egg | Egg | Mythical | 1024 | cracked shell, light leaking out
 Simple Stick | Resource | Common`;
 
-export default function BatchPanel({ includeRarity }) {
-  const [text, setText] = useState("");
+export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
+  const text = batchText;
+  const setText = setBatchText;
   const [dCategory, setDCategory] = useState(CATEGORIES[0]);
   const [dRarity, setDRarity] = useState(RARITIES[0]);
   const [dSize, setDSize] = useState(512);

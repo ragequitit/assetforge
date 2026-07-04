@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { getPool, initSchema, getSetting } from "./lib/db.js";
+import { getPool, initSchema, getProfileReference } from "./lib/db.js";
 import { buildPrompt } from "./lib/prompt.js";
 import { generateImage } from "./lib/providers.js";
 
@@ -58,9 +58,11 @@ async function processJob(p, job) {
     style: job.style_prompt,
   });
 
+  // Use the reference image from the loadout this job belongs to — so a queue
+  // that's mid-run keeps its own look even if you switch loadout in the browser.
   const raw = await generateImage(prompt, {
     quality: job.quality,
-    referenceB64: (await getSetting("reference_image", "")) || undefined,
+    referenceB64: (await getProfileReference(job.profile_id)) || undefined,
   });
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "asset-"));

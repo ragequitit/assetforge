@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export default function SettingsPanel() {
+export default function SettingsPanel({ activeName = "" }) {
   const [masterPrompt, setMasterPrompt] = useState("");
   const [defaultStyle, setDefaultStyle] = useState("");
   const [categories, setCategories] = useState([]);
@@ -92,6 +92,12 @@ export default function SettingsPanel() {
 
   return (
     <div className="settings-stack">
+      {activeName && (
+        <div className="loadout-banner">
+          Inställningarna nedan gäller loadouten <strong>{activeName}</strong>. Byt loadout högst
+          upp för att redigera ett annat spel.
+        </div>
+      )}
       {status && <div className={`status ${status.kind}`}>{status.text}</div>}
 
       <section className="panel">

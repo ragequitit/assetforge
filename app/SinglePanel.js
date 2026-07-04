@@ -8,7 +8,7 @@ const QUALITIES = ["low", "medium", "high"];
 const VARIATIONS = [1, 2, 3, 4];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export default function SinglePanel({ includeRarity }) {
+export default function SinglePanel({ includeRarity, onAddToBatch, batchCount = 0, onGoToBatch }) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [rarity, setRarity] = useState(RARITIES[0]);
@@ -59,6 +59,24 @@ export default function SinglePanel({ includeRarity }) {
       setBusy(false);
       setStatus({ kind: "err", text: err.message });
     }
+  }
+
+  function handleAddToBatch() {
+    if (!name.trim()) {
+      setStatus({ kind: "err", text: "Ange ett asset-namn först." });
+      return;
+    }
+    // Build one batch line in the "name | category | rarity | size | notes" format.
+    // Strip any "|" from free-text fields so they can't corrupt the line.
+    const clean = (s) => String(s).replace(/\|/g, " ").replace(/\s+/g, " ").trim();
+    const parts = [clean(name), category, rarity, String(size)];
+    const n = clean(notes);
+    const line = (n ? [...parts, n] : parts).join(" | ");
+    onAddToBatch?.(line);
+    setStatus({ kind: "ok", text: `"${name.trim()}" lades till i Batch.` });
+    // Clear name + notes for quick entry of the next asset; keep the other fields.
+    setName("");
+    setNotes("");
   }
 
   async function poll(ids) {
@@ -163,7 +181,19 @@ export default function SinglePanel({ includeRarity }) {
           <button className="btn-primary" onClick={handleGenerate} disabled={busy}>
             {busy ? "Genererar…" : `Generate${variations > 1 ? ` ${variations}` : ""}`}
           </button>
+          <button className="btn-ghost" onClick={handleAddToBatch} disabled={busy}>
+            + Add to batch
+          </button>
         </div>
+
+        {batchCount > 0 && (
+          <div className="batch-added-line">
+            {batchCount} i batch.{" "}
+            <button type="button" className="linklike" onClick={onGoToBatch}>
+              Öppna Batch →
+            </button>
+          </div>
+        )}
 
         <div className="ref-line">
           {hasReference ? "🎨 Referensstil aktiv (styrs i Settings)" : "Ingen referensstil — sätt en i Settings för konsekvent look"}

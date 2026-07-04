@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPool, initSchema, getSetting } from "@/lib/db";
+import { getPool, initSchema, getActiveProfile } from "@/lib/db";
 import { CATEGORIES, RARITIES, SIZES, assetFilename, DEFAULT_STYLE } from "@/lib/prompt";
 
 export const runtime = "nodejs";
@@ -23,10 +23,15 @@ export async function POST(req) {
 
     const p = getPool();
     const batchId = `b_${Date.now()}`;
-    // Snapshot the current house style + category defaults so later edits don't
-    // change jobs that are already queued.
-    const masterPrompt = await getSetting("master_prompt", DEFAULT_STYLE);
-    const catDefaults = parseCategoryDefaults(await getSetting("category_defaults", null));
+
+    // Snapshot the ACTIVE loadout's house style + category defaults so later edits
+    // (or switching loadout) don't change jobs that are already queued. Each job is
+    // also tagged with the loadout it belongs to.
+    const prof = await getActiveProfile();
+    if (!prof) return NextResponse.json({ error: "Ingen aktiv loadout." }, { status: 400 });
+    const profileId = prof.id;
+    const masterPrompt = (prof.master_prompt || "").trim() ? prof.master_prompt : DEFAULT_STYLE;
+    const catDefaults = parseCategoryDefaults(prof.category_defaults || null);
     const jobs = [];
 
     for (const it of items) {
@@ -48,8 +53,8 @@ export async function POST(req) {
       for (let v = 1; v <= variations; v++) {
         const filename = variations > 1 ? `${baseName}-v${v}.png` : `${baseName}.png`;
         const r = await p.query(
-          `INSERT INTO jobs (name, category, rarity, size, notes, quality, include_rarity, filename, batch_id, style_prompt)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          `INSERT INTO jobs (name, category, rarity, size, notes, quality, include_rarity, filename, batch_id, style_prompt, profile_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
            RETURNING id`,
           [
             it.name.trim(),
@@ -62,6 +67,7 @@ export async function POST(req) {
             filename,
             batchId,
             masterPrompt,
+            profileId,
           ]
         );
         jobs.push({

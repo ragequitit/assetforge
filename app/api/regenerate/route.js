@@ -5,7 +5,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Re-rolls an asset: clones its parameters into a fresh queued job so you get a
-// new version. The original is untouched; delete whichever you don't want.
+// new version. The original is untouched; delete whichever you don't want. The
+// clone keeps the same loadout (profile_id) as the original.
 export async function POST(req) {
   try {
     await initSchema();
@@ -19,12 +20,12 @@ export async function POST(req) {
     }
     const j = src.rows[0];
     const r = await p.query(
-      `INSERT INTO jobs (name, category, rarity, size, notes, quality, include_rarity, filename, batch_id, style_prompt)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `INSERT INTO jobs (name, category, rarity, size, notes, quality, include_rarity, filename, batch_id, style_prompt, profile_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING id`,
       [
         j.name, j.category, j.rarity, j.size, j.notes, j.quality,
-        j.include_rarity, j.filename, `reroll_${Date.now()}`, j.style_prompt,
+        j.include_rarity, j.filename, `reroll_${Date.now()}`, j.style_prompt, j.profile_id,
       ]
     );
     return NextResponse.json({ id: String(r.rows[0].id), filename: j.filename });
