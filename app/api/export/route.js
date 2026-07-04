@@ -1,0 +1,58 @@
+import JSZip from "jszip";
+import { getPool, initSchema } from "@/lib/db";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function csvEscape(v) {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// Bundles every finished asset into a zip: <category>/<filename>.png + manifest.csv
+export async function GET() {
+  try {
+    await initSchema();
+    const p = getPool();
+    const r = await p.query(
+      `SELECT category, filename, name, rarity, size, image, created_at
+         FROM jobs WHERE status='done' AND image IS NOT NULL
+        ORDER BY category, filename`
+    );
+    if (r.rows.length === 0) {
+      return new Response("Inga assets att exportera.", { status: 404 });
+    }
+
+    const zip = new JSZip();
+    const manifest = ["category,filename,name,rarity,size,created_at"];
+    const used = new Set();
+    for (const row of r.rows) {
+      let path = `${row.category.toLowerCase()}/${row.filename}`;
+      // avoid clobbering duplicates in the zip
+      if (used.has(path)) {
+        const base = row.filename.replace(/\.png$/i, "");
+        path = `${row.category.toLowerCase()}/${base}-${row.id || Math.random().toString(36).slice(2, 6)}.png`;
+      }
+      used.add(path);
+      zip.file(path, row.image);
+      manifest.push(
+        [row.category, row.filename, row.name, row.rarity, row.size, row.created_at?.toISOString?.() || ""]
+          .map(csvEscape)
+          .join(",")
+      );
+    }
+    zip.file("manifest.csv", manifest.join("\n"));
+
+    const buf = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    const stamp = new Date().toISOString().slice(0, 10);
+    return new Response(buf, {
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="assets-${stamp}.zip"`,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return new Response("Export misslyckades.", { status: 500 });
+  }
+}
