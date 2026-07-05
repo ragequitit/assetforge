@@ -6,6 +6,7 @@ import BatchPanel from "./BatchPanel";
 import GalleryPanel from "./GalleryPanel";
 import SettingsPanel from "./SettingsPanel";
 import AnimatePanel from "./AnimatePanel";
+import ImportPanel from "./ImportPanel";
 
 export default function Page() {
   const [tab, setTab] = useState("single");
@@ -212,6 +213,14 @@ export default function Page() {
           </button>
           <button
             role="tab"
+            aria-selected={tab === "import"}
+            className={`tab ${tab === "import" ? "active" : ""}`}
+            onClick={() => setTab("import")}
+          >
+            Remove BG
+          </button>
+          <button
+            role="tab"
             aria-selected={tab === "settings"}
             className={`tab ${tab === "settings" ? "active" : ""}`}
             onClick={() => setTab("settings")}
@@ -249,6 +258,7 @@ export default function Page() {
       )}
       {tab === "gallery" && <GalleryPanel key={refreshKey} includeRarity={includeRarity} />}
       {tab === "animate" && <AnimatePanel key={refreshKey} />}
+      {tab === "import" && <ImportPanel key={refreshKey} />}
       {tab === "settings" && <SettingsPanel key={refreshKey} activeName={activeName} />}
     </main>
   );

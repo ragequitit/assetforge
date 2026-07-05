@@ -53,6 +53,7 @@ export async function GET() {
     const r = await p.query(
       `SELECT category, filename, name, rarity, size, image, created_at, id
          FROM jobs WHERE status='done' AND image IS NOT NULL AND profile_id = $1 AND deleted_at IS NULL
+              AND (kind IS NULL OR kind <> 'import')
         ORDER BY category, filename`,
       [prof?.id || null]
     );

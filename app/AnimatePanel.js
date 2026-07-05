@@ -81,7 +81,8 @@ export default function AnimatePanel() {
     img.src = `/api/asset?id=${id}`;
   }
 
-  // Render loop
+  // Render loop — (re)starts once the canvas is actually in the DOM, i.e. after
+  // loading finishes and there's at least one asset to show.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -167,7 +168,7 @@ export default function AnimatePanel() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
     };
-  }, []);
+  }, [loading, assets.length]);
 
   if (loading) {
     return <div className="panel"><p className="placeholder">Laddar…</p></div>;

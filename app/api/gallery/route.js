@@ -31,6 +31,7 @@ export async function GET(req) {
               octet_length(image) AS bytes, created_at
          FROM jobs
         WHERE status='done' AND image IS NOT NULL AND profile_id = $1 AND ${deletedClause}
+              AND (kind IS NULL OR kind <> 'import')
         ORDER BY created_at DESC
         LIMIT 500`,
       [activeId]

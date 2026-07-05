@@ -50,22 +50,28 @@ async function claimJob(p) {
 }
 
 async function processJob(p, job) {
-  const prompt = buildPrompt({
-    name: job.name,
-    category: job.category,
-    rarity: job.rarity,
-    notes: job.notes,
-    style: job.style_prompt,
-    categoryHint: job.category_hint,
-    rarityStyle: job.rarity_style,
-  });
-
-  // Use the reference image from the loadout this job belongs to — so a queue
-  // that's mid-run keeps its own look even if you switch loadout in the browser.
-  const raw = await generateImage(prompt, {
-    quality: job.quality,
-    referenceB64: (await getProfileReference(job.profile_id)) || undefined,
-  });
+  let raw;
+  if (job.kind === "import") {
+    // Background-remove path: no generation, just process the uploaded image.
+    if (!job.source_image) throw new Error("Ingen källbild att bearbeta.");
+    raw = job.source_image; // Buffer (bytea)
+  } else {
+    const prompt = buildPrompt({
+      name: job.name,
+      category: job.category,
+      rarity: job.rarity,
+      notes: job.notes,
+      style: job.style_prompt,
+      categoryHint: job.category_hint,
+      rarityStyle: job.rarity_style,
+    });
+    // Use the reference image from the loadout this job belongs to — so a queue
+    // that's mid-run keeps its own look even if you switch loadout in the browser.
+    raw = await generateImage(prompt, {
+      quality: job.quality,
+      referenceB64: (await getProfileReference(job.profile_id)) || undefined,
+    });
+  }
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "asset-"));
   try {
@@ -74,10 +80,18 @@ async function processJob(p, job) {
     fs.writeFileSync(rawPath, raw);
     await runPython(rawPath, outPath, job.size);
     const processed = fs.readFileSync(outPath);
-    await p.query(
-      `UPDATE jobs SET status='done', image=$1, error=NULL, updated_at=now() WHERE id=$2`,
-      [processed, job.id]
-    );
+    if (job.kind === "import") {
+      // Store the result and drop the now-unneeded source to reclaim space.
+      await p.query(
+        `UPDATE jobs SET status='done', image=$1, source_image=NULL, error=NULL, updated_at=now() WHERE id=$2`,
+        [processed, job.id]
+      );
+    } else {
+      await p.query(
+        `UPDATE jobs SET status='done', image=$1, error=NULL, updated_at=now() WHERE id=$2`,
+        [processed, job.id]
+      );
+    }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

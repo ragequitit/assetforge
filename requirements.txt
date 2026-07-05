@@ -2,7 +2,6 @@
 Pillow>=10.0
 numpy>=1.24
 
-# Valfritt: bättre bakgrundsborttagning för ogenomskinliga bilder.
-# Behövs mest om du använder Replicate/opaka modeller.
-# rembg>=2.0
-# onnxruntime>=1.16
+# Bättre bakgrundsborttagning för uppladdade, ogenomskinliga bilder.
+rembg>=2.0
+onnxruntime>=1.16
