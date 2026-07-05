@@ -20,12 +20,15 @@ export async function POST(req) {
     }
     const j = src.rows[0];
     const r = await p.query(
-      `INSERT INTO jobs (name, category, rarity, size, notes, quality, include_rarity, filename, batch_id, style_prompt, profile_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `INSERT INTO jobs
+         (name, category, rarity, size, notes, quality, include_rarity, filename,
+          batch_id, style_prompt, profile_id, category_hint, rarity_style, raw_notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING id`,
       [
         j.name, j.category, j.rarity, j.size, j.notes, j.quality,
         j.include_rarity, j.filename, `reroll_${Date.now()}`, j.style_prompt, j.profile_id,
+        j.category_hint, j.rarity_style, j.raw_notes,
       ]
     );
     return NextResponse.json({ id: String(r.rows[0].id), filename: j.filename });

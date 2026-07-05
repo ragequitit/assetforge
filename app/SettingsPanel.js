@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { RARITY_PALETTE } from "@/lib/prompt";
 
 export default function SettingsPanel({ activeName = "" }) {
   const [masterPrompt, setMasterPrompt] = useState("");
   const [defaultStyle, setDefaultStyle] = useState("");
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState([]); // [{name, hint}]
+  const [rarities, setRarities] = useState([]); // [{name, style, color}]
   const [catDefaults, setCatDefaults] = useState({});
   const [hasReference, setHasReference] = useState(false);
   const [refPreview, setRefPreview] = useState(null);
@@ -22,7 +24,8 @@ export default function SettingsPanel({ activeName = "" }) {
       ]);
       setMasterPrompt(s.masterPrompt || "");
       setDefaultStyle(s.defaultStyle || "");
-      setCategories(s.categories || []);
+      setCategories(Array.isArray(s.categories) ? s.categories : []);
+      setRarities(Array.isArray(s.rarities) ? s.rarities : []);
       setCatDefaults(s.categoryDefaults || {});
       setHasReference(!!r.hasReference);
     } finally {
@@ -34,29 +37,53 @@ export default function SettingsPanel({ activeName = "" }) {
     loadAll();
   }, []);
 
-  async function saveMaster() {
-    setStatus(null);
-    const res = await fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ masterPrompt }),
-    });
-    setStatus(res.ok
-      ? { kind: "ok", text: "Master-prompt sparad. Gäller nya genereringar." }
-      : { kind: "err", text: "Kunde inte spara master-prompt." });
+  function flash(ok, text) {
+    setStatus({ kind: ok ? "ok" : "err", text });
   }
 
-  async function saveCatDefaults() {
+  async function post(body, okText) {
     setStatus(null);
     const res = await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ categoryDefaults: catDefaults }),
+      body: JSON.stringify(body),
     });
-    setStatus(res.ok
-      ? { kind: "ok", text: "Category defaults sparade." }
-      : { kind: "err", text: "Kunde inte spara." });
+    const d = await res.json().catch(() => ({}));
+    flash(res.ok, res.ok ? okText : d.error || "Kunde inte spara.");
+    return res.ok;
   }
+
+  const saveMaster = () =>
+    post({ masterPrompt }, "Master-prompt sparad. Gäller nya genereringar.");
+  const saveCatDefaults = () => post({ categoryDefaults: catDefaults }, "Category defaults sparade.");
+
+  async function saveCategories() {
+    const cleaned = categories.filter((c) => (c.name || "").trim());
+    if (cleaned.length === 0) return flash(false, "Minst en kategori krävs.");
+    if (await post({ categories: cleaned }, "Kategorier sparade.")) loadAll();
+  }
+
+  async function saveRarities() {
+    const cleaned = rarities.filter((r) => (r.name || "").trim());
+    if (cleaned.length === 0) return flash(false, "Minst en rarity krävs.");
+    if (await post({ rarities: cleaned }, "Rarities sparade.")) loadAll();
+  }
+
+  // -- category editor helpers --
+  const setCat = (i, field, val) =>
+    setCategories((prev) => prev.map((c, k) => (k === i ? { ...c, [field]: val } : c)));
+  const addCat = () => setCategories((prev) => [...prev, { name: "", hint: "" }]);
+  const removeCat = (i) => setCategories((prev) => prev.filter((_, k) => k !== i));
+
+  // -- rarity editor helpers --
+  const setRar = (i, field, val) =>
+    setRarities((prev) => prev.map((r, k) => (k === i ? { ...r, [field]: val } : r)));
+  const addRar = () =>
+    setRarities((prev) => [
+      ...prev,
+      { name: "", style: "", color: RARITY_PALETTE[prev.length % RARITY_PALETTE.length] },
+    ]);
+  const removeRar = (i) => setRarities((prev) => prev.filter((_, k) => k !== i));
 
   function onPickReference(e) {
     const file = e.target.files?.[0];
@@ -73,9 +100,9 @@ export default function SettingsPanel({ activeName = "" }) {
       const d = await res.json();
       if (res.ok) {
         setHasReference(true);
-        setStatus({ kind: "ok", text: "Referensbild sparad. Nya bilder anpassas till dess stil." });
+        flash(true, "Referensbild sparad. Nya bilder anpassas till dess stil.");
       } else {
-        setStatus({ kind: "err", text: d.error || "Kunde inte spara referensbilden." });
+        flash(false, d.error || "Kunde inte spara referensbilden.");
       }
     };
     reader.readAsDataURL(file);
@@ -85,10 +112,15 @@ export default function SettingsPanel({ activeName = "" }) {
     await fetch("/api/reference", { method: "DELETE" });
     setHasReference(false);
     setRefPreview(null);
-    setStatus({ kind: "ok", text: "Referensbild borttagen." });
+    flash(true, "Referensbild borttagen.");
   }
 
-  if (loading) return <div className="panel"><p className="placeholder">Laddar inställningar…</p></div>;
+  if (loading)
+    return (
+      <div className="panel">
+        <p className="placeholder">Laddar inställningar…</p>
+      </div>
+    );
 
   return (
     <div className="settings-stack">
@@ -119,6 +151,75 @@ export default function SettingsPanel({ activeName = "" }) {
         <div className="actions">
           <button className="btn-primary" onClick={saveMaster}>Spara master-prompt</button>
           <button className="btn-ghost" onClick={() => setMasterPrompt(defaultStyle)}>Återställ standard</button>
+        </div>
+      </section>
+
+      <section className="panel">
+        <label>Kategorier</label>
+        <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
+          De typer du kan välja mellan när du skapar en asset. Beskrivningen är en kort rad om
+          <em> vad saken är</em> — den vävs in i bilden, så egna kategorier blir lika bra som de
+          inbyggda. T.ex. Building → “a small stylized building or structure”.
+        </p>
+        {categories.map((c, i) => (
+          <div className="vocab-row" key={i}>
+            <input
+              className="vocab-name"
+              type="text"
+              placeholder="Namn"
+              value={c.name}
+              onChange={(e) => setCat(i, "name", e.target.value)}
+            />
+            <input
+              className="vocab-desc"
+              type="text"
+              placeholder="Vad det är (valfritt)"
+              value={c.hint}
+              onChange={(e) => setCat(i, "hint", e.target.value)}
+            />
+            <button className="icon-btn" title="Ta bort" onClick={() => removeCat(i)}>×</button>
+          </div>
+        ))}
+        <div className="actions">
+          <button className="btn-ghost small" onClick={addCat}>+ Lägg till kategori</button>
+          <button className="btn-primary" onClick={saveCategories}>Spara kategorier</button>
+        </div>
+      </section>
+
+      <section className="panel">
+        <label>Rarities</label>
+        <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
+          Dina rarity-nivåer och <em>vad var och en gör med looken</em> (den texten läggs in i
+          bilden). Lägg till egna nivåer och skriv vad de ska betyda. <strong>None</strong> ger
+          ingen rarity-look alls — lämna den tom.
+        </p>
+        {rarities.map((r, i) => {
+          const isNone = r.name === "None";
+          return (
+            <div className="vocab-row" key={i}>
+              <span className="swatch" style={{ background: r.color || "var(--muted)" }} />
+              <input
+                className="vocab-name"
+                type="text"
+                placeholder="Namn"
+                value={r.name}
+                onChange={(e) => setRar(i, "name", e.target.value)}
+              />
+              <input
+                className="vocab-desc"
+                type="text"
+                placeholder={isNone ? "ingen rarity-look (lämnas tom)" : "vad den gör med looken"}
+                value={r.style}
+                disabled={isNone}
+                onChange={(e) => setRar(i, "style", e.target.value)}
+              />
+              <button className="icon-btn" title="Ta bort" onClick={() => removeRar(i)}>×</button>
+            </div>
+          );
+        })}
+        <div className="actions">
+          <button className="btn-ghost small" onClick={addRar}>+ Lägg till rarity</button>
+          <button className="btn-primary" onClick={saveRarities}>Spara rarities</button>
         </div>
       </section>
 
@@ -160,14 +261,14 @@ export default function SettingsPanel({ activeName = "" }) {
           hoppa över.
         </p>
         {categories.map((c) => (
-          <div className="field" key={c}>
-            <label htmlFor={`cd-${c}`} style={{ textTransform: "none", letterSpacing: 0 }}>{c}</label>
+          <div className="field" key={c.name}>
+            <label htmlFor={`cd-${c.name}`} style={{ textTransform: "none", letterSpacing: 0 }}>{c.name}</label>
             <input
-              id={`cd-${c}`}
+              id={`cd-${c.name}`}
               type="text"
-              placeholder={c === "Building" ? "t.ex. isometric view, small footprint" : "valfri stil för " + c}
-              value={catDefaults[c] || ""}
-              onChange={(e) => setCatDefaults((prev) => ({ ...prev, [c]: e.target.value }))}
+              placeholder={"valfri stil för " + c.name}
+              value={catDefaults[c.name] || ""}
+              onChange={(e) => setCatDefaults((prev) => ({ ...prev, [c.name]: e.target.value }))}
             />
           </div>
         ))}

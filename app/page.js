@@ -5,6 +5,7 @@ import SinglePanel from "./SinglePanel";
 import BatchPanel from "./BatchPanel";
 import GalleryPanel from "./GalleryPanel";
 import SettingsPanel from "./SettingsPanel";
+import AnimatePanel from "./AnimatePanel";
 
 export default function Page() {
   const [tab, setTab] = useState("single");
@@ -95,6 +96,21 @@ export default function Page() {
     }
   }
 
+  async function duplicateProfile() {
+    if (!activeId) return;
+    const name = window.prompt(
+      "Namn på kopian:",
+      `${activeName} kopia`
+    );
+    if (!name || !name.trim()) return;
+    const d = await postProfile({ action: "duplicate", id: activeId, name: name.trim() });
+    if (d) {
+      await loadProfiles();
+      setActiveId(d.activeId);
+      bumpRefresh();
+    }
+  }
+
   async function renameProfile() {
     if (!activeId) return;
     const name = window.prompt("Nytt namn på loadouten:", activeName);
@@ -123,7 +139,7 @@ export default function Page() {
     <main className="wrap">
       <div className="masthead">
         <span className="planet" aria-hidden="true" />
-        <h1>Pet Planet · Asset Generator</h1>
+        <h1>Asset Generator</h1>
       </div>
       <p className="sub">Internt verktyg — generera, bearbeta och spara spel-assets lokalt.</p>
 
@@ -145,6 +161,9 @@ export default function Page() {
         </select>
         <button className="btn-ghost small" onClick={newProfile} disabled={busy}>
           + Ny
+        </button>
+        <button className="btn-ghost small" onClick={duplicateProfile} disabled={busy || !activeId}>
+          Duplicera
         </button>
         <button className="btn-ghost small" onClick={renameProfile} disabled={busy || !activeId}>
           Byt namn
@@ -185,6 +204,14 @@ export default function Page() {
           </button>
           <button
             role="tab"
+            aria-selected={tab === "animate"}
+            className={`tab ${tab === "animate" ? "active" : ""}`}
+            onClick={() => setTab("animate")}
+          >
+            Animate
+          </button>
+          <button
+            role="tab"
             aria-selected={tab === "settings"}
             className={`tab ${tab === "settings" ? "active" : ""}`}
             onClick={() => setTab("settings")}
@@ -220,7 +247,8 @@ export default function Page() {
           setBatchText={setBatchText}
         />
       )}
-      {tab === "gallery" && <GalleryPanel key={refreshKey} />}
+      {tab === "gallery" && <GalleryPanel key={refreshKey} includeRarity={includeRarity} />}
+      {tab === "animate" && <AnimatePanel key={refreshKey} />}
       {tab === "settings" && <SettingsPanel key={refreshKey} activeName={activeName} />}
     </main>
   );

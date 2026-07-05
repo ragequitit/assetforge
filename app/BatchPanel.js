@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CATEGORIES, RARITIES, SIZES } from "@/lib/prompt";
+import { SIZES } from "@/lib/prompt";
 import { parseBatch } from "@/lib/parseBatch";
-import { RARITY_COLOR } from "@/lib/colors";
 
 const QUALITIES = ["low", "medium", "high"];
 const MAX_THUMBS = 18;
@@ -21,10 +20,33 @@ Simple Stick | Resource | Common`;
 export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
   const text = batchText;
   const setText = setBatchText;
-  const [dCategory, setDCategory] = useState(CATEGORIES[0]);
-  const [dRarity, setDRarity] = useState(RARITIES[0]);
+  const [cats, setCats] = useState([]); // [{name, hint}]
+  const [rars, setRars] = useState([]); // [{name, style, color}]
+  const [dCategory, setDCategory] = useState("");
+  const [dRarity, setDRarity] = useState("");
   const [dSize, setDSize] = useState(512);
   const [quality, setQuality] = useState("medium");
+
+  const rarColor = useMemo(
+    () => Object.fromEntries(rars.map((r) => [r.name, r.color])),
+    [rars]
+  );
+
+  // Load this loadout's categories + rarities for the dropdowns and parsing.
+  useEffect(() => {
+    fetch("/api/settings", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        const c = Array.isArray(d.categories) ? d.categories : [];
+        const rr = Array.isArray(d.rarities) ? d.rarities : [];
+        setCats(c);
+        setRars(rr);
+        setDCategory(c[0]?.name || "");
+        const common = rr.find((x) => x.name === "Common");
+        setDRarity(common ? "Common" : rr[0]?.name || "");
+      })
+      .catch(() => {});
+  }, []);
 
   const [jobs, setJobs] = useState([]); // [{id, name, category, rarity, size, filename, status, error}]
   const [running, setRunning] = useState(false);
@@ -63,8 +85,15 @@ export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
   }, []);
 
   const defaults = useMemo(
-    () => ({ category: dCategory, rarity: dRarity, size: dSize, includeRarity }),
-    [dCategory, dRarity, dSize, includeRarity]
+    () => ({
+      category: dCategory,
+      rarity: dRarity,
+      size: dSize,
+      includeRarity,
+      categoryNames: cats.map((c) => c.name),
+      rarityNames: rars.map((r) => r.name),
+    }),
+    [dCategory, dRarity, dSize, includeRarity, cats, rars]
   );
   const { items, warningCount } = useMemo(() => parseBatch(text, defaults), [text, defaults]);
 
@@ -79,8 +108,19 @@ export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
     return { done, error, cancelled, active };
   }, [jobs]);
 
+  // Rough per-image cost by quality (USD). Estimate only — prices can change.
+  const COST_PER_IMG = { low: 0.02, medium: 0.04, high: 0.08 };
+  const estCost = (n) => (n * (COST_PER_IMG[quality] || 0.04)).toFixed(2);
+
   async function startAll() {
     if (!items.length) return;
+    if (
+      items.length > 20 &&
+      !window.confirm(
+        `Generera ${items.length} bilder? Uppskattad kostnad ~$${estCost(items.length)} på OpenAI-nyckeln.`
+      )
+    )
+      return;
     setThumbs([]);
     seenDone.current = new Set();
     setRunning(true);
@@ -124,6 +164,38 @@ export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
       /* ignore; poll reflects the result */
     } finally {
       setCancelling(false);
+    }
+  }
+
+  async function retryFailed() {
+    const failed = jobs.filter((j) => j.status === "error");
+    if (failed.length === 0) return;
+    setRunning(true);
+    const newJobs = [];
+    for (const f of failed) {
+      try {
+        const res = await fetch("/api/regenerate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: f.id }),
+        });
+        const d = await res.json();
+        if (res.ok) {
+          newJobs.push({
+            id: d.id, name: f.name, category: f.category, rarity: f.rarity,
+            size: f.size, filename: f.filename, status: "queued",
+          });
+        }
+      } catch {
+        /* skip this one */
+      }
+    }
+    if (newJobs.length) {
+      seenDone.current = new Set();
+      setJobs(newJobs);
+      poll(newJobs.map((j) => j.id));
+    } else {
+      setRunning(false);
     }
   }
 
@@ -188,10 +260,10 @@ export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
         <div className="defaults-row">
           <span className="defaults-label">Standard för tomma fält:</span>
           <select value={dCategory} onChange={(e) => setDCategory(e.target.value)} disabled={running}>
-            {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            {cats.map((c) => <option key={c.name}>{c.name}</option>)}
           </select>
           <select value={dRarity} onChange={(e) => setDRarity(e.target.value)} disabled={running}>
-            {RARITIES.map((r) => <option key={r}>{r}</option>)}
+            {rars.map((r) => <option key={r.name}>{r.name}</option>)}
           </select>
           <select value={dSize} onChange={(e) => setDSize(Number(e.target.value))} disabled={running}>
             {SIZES.map((s) => <option key={s} value={s}>{s} px</option>)}
@@ -201,6 +273,12 @@ export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
           </select>
         </div>
 
+        {items.length > 0 && !running && (
+          <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
+            {items.length} {items.length === 1 ? "bild" : "bilder"} · ~${estCost(items.length)} (uppskattning, {quality})
+          </p>
+        )}
+
         <div className="actions">
           <button className="btn-primary" onClick={startAll} disabled={running || items.length === 0}>
             {running ? "Kör på servern…" : items.length ? `Generate all (${items.length})` : "Inga assets"}
@@ -208,6 +286,11 @@ export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
           {running && (
             <button className="btn-ghost" onClick={cancelQueue} disabled={cancelling}>
               {cancelling ? "Avbryter…" : "Avbryt kö"}
+            </button>
+          )}
+          {!running && counts.error > 0 && (
+            <button className="btn-ghost" onClick={retryFailed}>
+              Försök igen på misslyckade ({counts.error})
             </button>
           )}
         </div>
@@ -239,7 +322,7 @@ export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
             items.map((it, i) => (
               <div key={i} className="qrow">
                 <span className="qidx">{i + 1}</span>
-                <span className="qdot" style={{ background: RARITY_COLOR[it.rarity] }} />
+                <span className="qdot" style={{ background: rarColor[it.rarity] || "var(--muted)" }} />
                 <div className="qmain">
                   <div className="qname">
                     {it.name}
@@ -258,7 +341,7 @@ export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
           {jobs.map((j, i) => (
             <div key={j.id} className={`qrow ${j.status}`}>
               <span className="qidx">{i + 1}</span>
-              <span className="qdot" style={{ background: RARITY_COLOR[j.rarity] || "var(--muted)" }} />
+              <span className="qdot" style={{ background: rarColor[j.rarity] || "var(--muted)" }} />
               <div className="qmain">
                 <div className="qname">
                   {j.name}

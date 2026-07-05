@@ -1047,3 +1047,118 @@ button:disabled {
 .linklike:hover {
   text-decoration: underline;
 }
+
+/* ---- Vocabulary editors (categories & rarities in Settings) ---- */
+.vocab-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.vocab-name {
+  flex: 0 0 34%;
+  min-width: 110px;
+}
+.vocab-desc {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vocab-row .swatch {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+.icon-btn {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.icon-btn:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+@media (max-width: 560px) {
+  .vocab-row {
+    flex-wrap: wrap;
+  }
+  .vocab-name {
+    flex: 1 1 60%;
+  }
+  .vocab-desc {
+    flex: 1 1 100%;
+    order: 3;
+  }
+}
+
+/* ---- Prompt modal ---- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  width: 100%;
+  max-width: 620px;
+  max-height: 85vh;
+  overflow: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+/* ---- Animate tab ---- */
+.anim-shell {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(420px 220px at 50% 6%, rgba(232, 162, 74, 0.12), transparent 70%),
+    linear-gradient(180deg, #1b160f 0%, #120f0a 100%);
+}
+.anim-canvas { display: block; width: 100%; height: auto; touch-action: none; }
+.anim-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px 2px 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.anim-thumb {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  border: 2px solid var(--border-soft);
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 4px;
+}
+.anim-thumb.sel { border-color: var(--accent); }
+.anim-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }

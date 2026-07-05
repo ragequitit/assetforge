@@ -56,6 +56,8 @@ async function processJob(p, job) {
     rarity: job.rarity,
     notes: job.notes,
     style: job.style_prompt,
+    categoryHint: job.category_hint,
+    rarityStyle: job.rarity_style,
   });
 
   // Use the reference image from the loadout this job belongs to — so a queue

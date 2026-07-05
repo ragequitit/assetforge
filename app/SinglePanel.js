@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CATEGORIES, RARITIES, SIZES } from "@/lib/prompt";
-import { RARITY_COLOR } from "@/lib/colors";
+import { SIZES } from "@/lib/prompt";
 
 const QUALITIES = ["low", "medium", "high"];
 const VARIATIONS = [1, 2, 3, 4];
@@ -10,22 +9,39 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export default function SinglePanel({ includeRarity, onAddToBatch, batchCount = 0, onGoToBatch }) {
   const [name, setName] = useState("");
-  const [category, setCategory] = useState(CATEGORIES[0]);
-  const [rarity, setRarity] = useState(RARITIES[0]);
+  const [cats, setCats] = useState([]); // [{name, hint}]
+  const [rars, setRars] = useState([]); // [{name, style, color}]
+  const [category, setCategory] = useState("");
+  const [rarity, setRarity] = useState("");
   const [size, setSize] = useState(512);
   const [quality, setQuality] = useState("medium");
   const [variations, setVariations] = useState(1);
   const [notes, setNotes] = useState("");
 
-  const [results, setResults] = useState([]); // [{id, status}]
+  const [results, setResults] = useState([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null);
   const [hasReference, setHasReference] = useState(false);
   const pollRef = useRef(false);
 
-  const ring = RARITY_COLOR[rarity];
+  const rarColor = Object.fromEntries(rars.map((r) => [r.name, r.color]));
+  const ring = rarColor[rarity] || "transparent";
 
   useEffect(() => {
+    // Load this loadout's vocabulary + reference status.
+    fetch("/api/settings", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        const c = Array.isArray(d.categories) ? d.categories : [];
+        const rr = Array.isArray(d.rarities) ? d.rarities : [];
+        setCats(c);
+        setRars(rr);
+        setCategory(c[0]?.name || "");
+        // Prefer "Common" as the starting rarity if the loadout has it.
+        const common = rr.find((x) => x.name === "Common");
+        setRarity(common ? "Common" : rr[0]?.name || "");
+      })
+      .catch(() => {});
     fetch("/api/reference")
       .then((r) => r.json())
       .then((d) => setHasReference(!!d.hasReference))
@@ -66,15 +82,12 @@ export default function SinglePanel({ includeRarity, onAddToBatch, batchCount = 
       setStatus({ kind: "err", text: "Ange ett asset-namn först." });
       return;
     }
-    // Build one batch line in the "name | category | rarity | size | notes" format.
-    // Strip any "|" from free-text fields so they can't corrupt the line.
     const clean = (s) => String(s).replace(/\|/g, " ").replace(/\s+/g, " ").trim();
     const parts = [clean(name), category, rarity, String(size)];
     const n = clean(notes);
     const line = (n ? [...parts, n] : parts).join(" | ");
     onAddToBatch?.(line);
     setStatus({ kind: "ok", text: `"${name.trim()}" lades till i Batch.` });
-    // Clear name + notes for quick entry of the next asset; keep the other fields.
     setName("");
     setNotes("");
   }
@@ -126,13 +139,13 @@ export default function SinglePanel({ includeRarity, onAddToBatch, batchCount = 
           <div className="field">
             <label htmlFor="category">Category</label>
             <select id="category" value={category} onChange={(e) => setCategory(e.target.value)}>
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {cats.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
             </select>
           </div>
           <div className="field">
             <label htmlFor="rarity">Rarity</label>
             <select id="rarity" value={rarity} onChange={(e) => setRarity(e.target.value)}>
-              {RARITIES.map((r) => <option key={r} value={r}>{r}</option>)}
+              {rars.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}
             </select>
           </div>
         </div>
@@ -236,7 +249,7 @@ export default function SinglePanel({ includeRarity, onAddToBatch, batchCount = 
         <div className="meta">
           <span className="tag">
             <span className="dot" style={{ "--ring": ring }} />
-            {rarity} · {category}
+            {rarity && rarity !== "None" ? `${rarity} · ${category}` : category}
           </span>
           <span className="tag">{size} px · {quality}</span>
         </div>

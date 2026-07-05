@@ -110,10 +110,32 @@ def remove_background_floodfill(img: Image.Image, tolerance: int = 30) -> Image.
     return Image.fromarray(arr, "RGBA")
 
 
-def trim_center_pad(img: Image.Image, size: int, padding_ratio: float) -> Image.Image:
+def subject_bbox(img: Image.Image, alpha_threshold: int):
+    """
+    Bounding box of the *solid* subject.
+
+    Using getbbox() directly counts every pixel whose alpha is > 0, so a faint,
+    near-invisible halo, glow spill or compression noise off to one side (common
+    in the "transparent" PNGs the image API returns) stretches the box and pushes
+    the visible subject off-centre. We instead threshold the alpha first, so only
+    pixels that are actually visible define the box. Falls back to the raw box if
+    thresholding would leave nothing.
+    """
+    alpha = img.getchannel("A")
+    if alpha_threshold > 0:
+        mask = alpha.point(lambda a: 255 if a >= alpha_threshold else 0)
+        bbox = mask.getbbox()
+        if bbox is not None:
+            return bbox
+    return alpha.getbbox()
+
+
+def trim_center_pad(
+    img: Image.Image, size: int, padding_ratio: float, alpha_threshold: int = 16
+) -> Image.Image:
     """Crop to the subject, then center+scale it onto a size x size transparent canvas."""
     img = img.convert("RGBA")
-    bbox = img.getchannel("A").getbbox()  # bounding box of non-transparent pixels
+    bbox = subject_bbox(img, alpha_threshold)  # box of the visible subject only
 
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     if bbox is None:
@@ -143,6 +165,13 @@ def main() -> int:
     parser.add_argument("--size", type=int, default=512, help="output edge length (default 512)")
     parser.add_argument("--padding", type=float, default=0.08, help="padding as ratio of size")
     parser.add_argument("--tolerance", type=int, default=30, help="flood-fill color tolerance")
+    parser.add_argument(
+        "--alpha-threshold",
+        type=int,
+        default=16,
+        help="ignore pixels fainter than this (0-255) when finding the subject, so faint "
+        "halos don't push centering off (default 16)",
+    )
     args = parser.parse_args()
 
     if not os.path.isfile(args.input):
@@ -157,7 +186,9 @@ def main() -> int:
     else:
         img = remove_background(img)
 
-    result = trim_center_pad(img, size=args.size, padding_ratio=args.padding)
+    result = trim_center_pad(
+        img, size=args.size, padding_ratio=args.padding, alpha_threshold=args.alpha_threshold
+    )
 
     out_dir = os.path.dirname(os.path.abspath(args.output))
     os.makedirs(out_dir, exist_ok=True)

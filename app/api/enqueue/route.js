@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server";
 import { getPool, initSchema, getActiveProfile } from "@/lib/db";
-import { CATEGORIES, RARITIES, SIZES, assetFilename, DEFAULT_STYLE } from "@/lib/prompt";
+import {
+  SIZES,
+  assetFilename,
+  DEFAULT_STYLE,
+  DEFAULT_CATEGORIES,
+  DEFAULT_RARITIES,
+} from "@/lib/prompt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function parseCategoryDefaults(raw) {
+function parseArr(raw, fallback) {
   try {
-    return raw ? JSON.parse(raw) : {};
+    const v = raw ? JSON.parse(raw) : null;
+    return Array.isArray(v) ? v : fallback;
   } catch {
-    return {};
+    return fallback;
   }
 }
 
@@ -24,25 +31,38 @@ export async function POST(req) {
     const p = getPool();
     const batchId = `b_${Date.now()}`;
 
-    // Snapshot the ACTIVE loadout's house style + category defaults so later edits
-    // (or switching loadout) don't change jobs that are already queued. Each job is
-    // also tagged with the loadout it belongs to.
     const prof = await getActiveProfile();
     if (!prof) return NextResponse.json({ error: "Ingen aktiv loadout." }, { status: 400 });
     const profileId = prof.id;
     const masterPrompt = (prof.master_prompt || "").trim() ? prof.master_prompt : DEFAULT_STYLE;
-    const catDefaults = parseCategoryDefaults(prof.category_defaults || null);
-    const jobs = [];
 
+    // The loadout's own categories/rarities define what's valid and what each one
+    // means. Build lookups by name so we can validate and snapshot the meaning.
+    const cats = parseArr(prof.categories, DEFAULT_CATEGORIES);
+    const rars = parseArr(prof.rarities, DEFAULT_RARITIES);
+    const catByName = new Map(cats.map((c) => [c.name, c]));
+    const rarByName = new Map(rars.map((r) => [r.name, r]));
+    const catDefaults = (() => {
+      try {
+        return prof.category_defaults ? JSON.parse(prof.category_defaults) : {};
+      } catch {
+        return {};
+      }
+    })();
+
+    const jobs = [];
     for (const it of items) {
       if (!it?.name?.trim()) continue;
-      if (!CATEGORIES.includes(it.category)) continue;
-      if (!RARITIES.includes(it.rarity)) continue;
+      const cat = catByName.get(it.category);
+      const rar = rarByName.get(it.rarity);
+      if (!cat || !rar) continue; // not part of this loadout's vocabulary
       const size = SIZES.includes(Number(it.size)) ? Number(it.size) : 512;
 
-      // Merge the per-category default direction with any per-asset notes.
       const catNote = (catDefaults[it.category] || "").trim();
-      const notes = [catNote, (it.notes || "").trim()].filter(Boolean).join(" ");
+      const rawNotes = (it.notes || "").trim();
+      const notes = [catNote, rawNotes].filter(Boolean).join(" ");
+      const categoryHint = cat.hint || "";
+      const rarityStyle = rar.style || "";
 
       const variations = Math.min(Math.max(Number(it.variations) || 1, 1), 4);
       const baseName = assetFilename({ name: it.name, rarity: it.rarity, includeRarity }).replace(
@@ -53,8 +73,10 @@ export async function POST(req) {
       for (let v = 1; v <= variations; v++) {
         const filename = variations > 1 ? `${baseName}-v${v}.png` : `${baseName}.png`;
         const r = await p.query(
-          `INSERT INTO jobs (name, category, rarity, size, notes, quality, include_rarity, filename, batch_id, style_prompt, profile_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          `INSERT INTO jobs
+             (name, category, rarity, size, notes, quality, include_rarity, filename,
+              batch_id, style_prompt, profile_id, category_hint, rarity_style, raw_notes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
            RETURNING id`,
           [
             it.name.trim(),
@@ -68,6 +90,9 @@ export async function POST(req) {
             batchId,
             masterPrompt,
             profileId,
+            categoryHint,
+            rarityStyle,
+            rawNotes,
           ]
         );
         jobs.push({
@@ -82,7 +107,7 @@ export async function POST(req) {
     }
 
     if (jobs.length === 0) {
-      return NextResponse.json({ error: "Inga giltiga rader." }, { status: 400 });
+      return NextResponse.json({ error: "Inga giltiga rader för den här loadouten." }, { status: 400 });
     }
     return NextResponse.json({ batchId, jobs });
   } catch (err) {

@@ -5,6 +5,7 @@ import {
   getActiveProfileId,
   setActiveProfile,
   createProfile,
+  duplicateProfile,
   updateProfile,
   deleteProfile,
   getProfile,
@@ -45,6 +46,16 @@ export async function POST(req) {
       // Land the user inside the new (empty) loadout so they can set it up.
       await setActiveProfile(id);
       return NextResponse.json({ ok: true, id, activeId: id });
+    }
+
+    if (action === "duplicate") {
+      const id = (body.id || "").toString();
+      const src = await getProfile(id);
+      if (!src) return NextResponse.json({ error: "Loadouten finns inte." }, { status: 404 });
+      const name = (body.name || `${src.name} kopia`).toString().trim().slice(0, 80);
+      const newId = await duplicateProfile(id, name);
+      await setActiveProfile(newId);
+      return NextResponse.json({ ok: true, id: newId, activeId: newId });
     }
 
     if (action === "activate") {
