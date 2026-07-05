@@ -108,9 +108,12 @@ export default function BatchPanel({ includeRarity, batchText, setBatchText }) {
     return { done, error, cancelled, active };
   }, [jobs]);
 
-  // Rough per-image cost by quality (USD). Estimate only — prices can change.
-  const COST_PER_IMG = { low: 0.02, medium: 0.04, high: 0.08 };
-  const estCost = (n) => (n * (COST_PER_IMG[quality] || 0.04)).toFixed(2);
+  // Rough per-image cost by quality (USD), for gpt-image-1.5 at 1024x1024.
+  // Estimate only — prices can change. (gpt-image-1.5: low ~$0.009,
+  // medium ~$0.034, high ~$0.133.) The tiny prompt-enrichment text call adds
+  // only a fraction of a cent per image on top.
+  const COST_PER_IMG = { low: 0.01, medium: 0.034, high: 0.133 };
+  const estCost = (n) => (n * (COST_PER_IMG[quality] || 0.034)).toFixed(2);
 
   async function startAll() {
     if (!items.length) return;
