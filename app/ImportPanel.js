@@ -13,6 +13,7 @@ export default function ImportPanel() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [size, setSize] = useState(512);
+  const [outputName, setOutputName] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -56,6 +57,7 @@ export default function ImportPanel() {
         const slice = files.slice(i, i + CHUNK);
         const fd = new FormData();
         fd.append("size", String(size));
+        fd.append("outputName", outputName);
         for (const f of slice) fd.append("files", f);
         const res = await fetch("/api/import", { method: "POST", body: fd });
         if (!res.ok) {
@@ -102,6 +104,18 @@ export default function ImportPanel() {
     }
   }
 
+  async function clearImports(scope) {
+    const label = scope === "done" ? "alla klara" : "ALLA";
+    if (!window.confirm(`Ta bort ${label} bilder i den här listan permanent? Det går inte att ångra.`)) return;
+    try {
+      await fetch(`/api/import${scope === "done" ? "?scope=done" : ""}`, { method: "DELETE" });
+      await loadItems();
+      setStatus({ kind: "ok", text: scope === "done" ? "Klara bilder rensade." : "Listan rensad." });
+    } catch {
+      setStatus({ kind: "err", text: "Kunde inte rensa." });
+    }
+  }
+
   async function remove(it) {
     try {
       await fetch("/api/delete", {
@@ -125,6 +139,20 @@ export default function ImportPanel() {
           <b> här</b>, separat från ditt vanliga Gallery. Tips: plana, enfärgade bakgrunder utan glöd
           och sparkles blir renast.
         </p>
+        <div className="field">
+          <label htmlFor="imp-name">
+            Utnamn <span className="lbl-hint">— valfritt. Skriv t.ex. "dog" så får du dog-1, dog-2, dog-3 …</span>
+          </label>
+          <input
+            id="imp-name"
+            type="text"
+            placeholder="lämna tomt för att behålla originalnamnen"
+            value={outputName}
+            onChange={(e) => setOutputName(e.target.value)}
+            disabled={uploading}
+          />
+        </div>
+
         <div className="row" style={{ alignItems: "flex-end" }}>
           <div className="field">
             <label htmlFor="imp-size">Utstorlek</label>
@@ -156,6 +184,10 @@ export default function ImportPanel() {
           <button className="btn-primary small" onClick={downloadAll} disabled={done.length === 0 || downloading}>
             {downloading ? "Packar…" : "Ladda ner alla (zip)"}
           </button>
+          {done.length > 0 && (
+            <button className="btn-ghost small" onClick={() => clearImports("done")}>Rensa klara</button>
+          )}
+          <button className="btn-ghost small" onClick={() => clearImports("all")}>Rensa alla</button>
         </div>
       )}
 
@@ -172,11 +204,9 @@ export default function ImportPanel() {
           {items.map((it) => (
             <div key={it.id} className="card">
               <div className="card-stage">
-                {it.status !== "done" && (
-                  <div className="card-actions">
-                    <button title="Ta bort" onClick={() => remove(it)}>✕</button>
-                  </div>
-                )}
+                <div className="card-actions">
+                  <button title="Ta bort" onClick={() => remove(it)}>✕</button>
+                </div>
                 {it.status === "done" ? (
                   <a href={`/api/asset?id=${it.id}`} target="_blank" rel="noreferrer">
                     <img src={`/api/asset?id=${it.id}`} alt={it.filename} loading="lazy" />
