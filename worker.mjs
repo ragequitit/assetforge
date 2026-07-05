@@ -10,14 +10,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { getPool, initSchema, getProfileReference } from "./lib/db.js";
-import { buildPrompt } from "./lib/prompt.js";
-import { generateImage } from "./lib/providers.js";
+import { buildCreativeSpec, FIXED_CONSTRAINTS_TEXT } from "./lib/prompt.js";
+import { generateImage, enrichPrompt } from "./lib/providers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PYTHON_BIN = process.env.PYTHON_BIN || "python3";
 const SCRIPT = path.join(__dirname, "scripts", "process_image.py");
 const POLL_MS = Number(process.env.WORKER_POLL_MS || 2000);
 const MAX_ATTEMPTS = Number(process.env.WORKER_MAX_ATTEMPTS || 3);
+// Prompt enrichment is on by default; set PROMPT_ENRICH=off to send the raw stack.
+const ENRICH_ENABLED = !["off", "0", "false", "no"].includes(
+  String(process.env.PROMPT_ENRICH ?? "on").toLowerCase()
+);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -56,7 +60,7 @@ async function processJob(p, job) {
     if (!job.source_image) throw new Error("Ingen källbild att bearbeta.");
     raw = job.source_image; // Buffer (bytea)
   } else {
-    const prompt = buildPrompt({
+    const creativeSpec = buildCreativeSpec({
       name: job.name,
       category: job.category,
       rarity: job.rarity,
@@ -65,6 +69,25 @@ async function processJob(p, job) {
       categoryHint: job.category_hint,
       rarityStyle: job.rarity_style,
     });
+
+    // Rewrite the creative stack into positive, flowing language before it hits
+    // the image model (see enrichPrompt in lib/providers.js). If enrichment is
+    // disabled or the text model errors, fall back to the raw stack so a job
+    // never blocks on the enricher.
+    let creative = creativeSpec;
+    if (ENRICH_ENABLED) {
+      try {
+        creative = await enrichPrompt(creativeSpec);
+        console.log(`[worker] job ${job.id}: prompt enriched`);
+      } catch (err) {
+        console.warn(
+          `[worker] job ${job.id}: enrich failed, using raw prompt (${err.message})`
+        );
+      }
+    }
+    // Fixed technical constraints are always appended verbatim, after enrichment.
+    const prompt = `${creative} ${FIXED_CONSTRAINTS_TEXT}`.trim();
+
     // Use the reference image from the loadout this job belongs to — so a queue
     // that's mid-run keeps its own look even if you switch loadout in the browser.
     raw = await generateImage(prompt, {
