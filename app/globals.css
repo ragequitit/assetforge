@@ -17,9 +17,10 @@
   --r-rare: #4aa3ff;
   --r-epic: #b46bff;
   --r-legendary: #ffc24a;
-  --r-mythical: #ff6bd0;
+  --r-mythical: #ef4444;
   --r-artifact: #34e0d0;
   --r-heavenly: #fff0a8;
+  --r-cosmic: #7b5cff;
 }
 
 * {
@@ -1086,9 +1087,40 @@ button:disabled {
   color: var(--text);
   border-color: var(--border);
 }
+.drag-handle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 32px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  border-radius: 6px;
+  touch-action: none;
+}
+.drag-handle:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.vocab-row.dragging {
+  opacity: 0.55;
+  outline: 2px dashed var(--border);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
 @media (max-width: 560px) {
   .vocab-row {
     flex-wrap: wrap;
+  }
+  .drag-handle {
+    order: -1;
   }
   .vocab-name {
     flex: 1 1 60%;

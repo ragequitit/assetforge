@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RARITY_PALETTE } from "@/lib/prompt";
+import { RARITY_PALETTE, DEFAULT_RARITIES } from "@/lib/prompt";
 
 export default function SettingsPanel({ activeName = "" }) {
   const [masterPrompt, setMasterPrompt] = useState("");
@@ -15,6 +15,46 @@ export default function SettingsPanel({ activeName = "" }) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const fileRef = useRef(null);
+
+  // -- drag-to-reorder (categories & rarities) --
+  const dragItem = useRef({ list: null, index: null });
+  const [dragging, setDragging] = useState({ list: null, index: null });
+
+  function moveItem(setList, from, to) {
+    setList((prev) => {
+      if (from == null || to == null || from === to) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }
+
+  function onDragStart(e, list, i) {
+    dragItem.current = { list, index: i };
+    setDragging({ list, index: i });
+    // Firefox needs data set for a drag to actually begin.
+    e.dataTransfer.effectAllowed = "move";
+    try {
+      e.dataTransfer.setData("text/plain", String(i));
+    } catch {}
+  }
+
+  // Live reorder as you drag over another row in the same list.
+  function onDragEnterRow(list, setList, i) {
+    const d = dragItem.current;
+    if (d.list !== list || d.index == null || d.index === i) return;
+    moveItem(setList, d.index, i);
+    dragItem.current = { list, index: i };
+    setDragging({ list, index: i });
+  }
+
+  function onDragEnd() {
+    dragItem.current = { list: null, index: null };
+    setDragging({ list: null, index: null });
+  }
+
+  const isDragging = (list, i) => dragging.list === list && dragging.index === i;
 
   async function loadAll() {
     try {
@@ -84,6 +124,11 @@ export default function SettingsPanel({ activeName = "" }) {
       { name: "", style: "", color: RARITY_PALETTE[prev.length % RARITY_PALETTE.length] },
     ]);
   const removeRar = (i) => setRarities((prev) => prev.filter((_, k) => k !== i));
+  // Load the built-in standard rarities into the editor (does not save until "Spara").
+  const resetRarities = () => {
+    setRarities(DEFAULT_RARITIES.map((r) => ({ ...r })));
+    flash(true, "Standard-rarities inlästa — granska och tryck Spara för att använda dem.");
+  };
 
   function onPickReference(e) {
     const file = e.target.files?.[0];
@@ -159,10 +204,25 @@ export default function SettingsPanel({ activeName = "" }) {
         <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
           De typer du kan välja mellan när du skapar en asset. Beskrivningen är en kort rad om
           <em> vad saken är</em> — den vävs in i bilden, så egna kategorier blir lika bra som de
-          inbyggda. T.ex. Building → “a small stylized building or structure”.
+          inbyggda. T.ex. Building → “a small stylized building or structure”. Dra i{" "}
+          <span aria-hidden="true">⠿</span> för att ändra ordning — tryck sedan Spara.
         </p>
         {categories.map((c, i) => (
-          <div className="vocab-row" key={i}>
+          <div
+            className={`vocab-row${isDragging("cat", i) ? " dragging" : ""}`}
+            key={i}
+            onDragOver={(e) => e.preventDefault()}
+            onDragEnter={() => onDragEnterRow("cat", setCategories, i)}
+          >
+            <span
+              className="drag-handle"
+              title="Dra för att ändra ordning"
+              draggable
+              onDragStart={(e) => onDragStart(e, "cat", i)}
+              onDragEnd={onDragEnd}
+            >
+              ⠿
+            </span>
             <input
               className="vocab-name"
               type="text"
@@ -191,12 +251,27 @@ export default function SettingsPanel({ activeName = "" }) {
         <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
           Dina rarity-nivåer och <em>vad var och en gör med looken</em> (den texten läggs in i
           bilden). Lägg till egna nivåer och skriv vad de ska betyda. <strong>None</strong> ger
-          ingen rarity-look alls — lämna den tom.
+          ingen rarity-look alls — lämna den tom. Dra i <span aria-hidden="true">⠿</span> för att
+          ändra ordning — tryck sedan Spara.
         </p>
         {rarities.map((r, i) => {
           const isNone = r.name === "None";
           return (
-            <div className="vocab-row" key={i}>
+            <div
+              className={`vocab-row${isDragging("rar", i) ? " dragging" : ""}`}
+              key={i}
+              onDragOver={(e) => e.preventDefault()}
+              onDragEnter={() => onDragEnterRow("rar", setRarities, i)}
+            >
+              <span
+                className="drag-handle"
+                title="Dra för att ändra ordning"
+                draggable
+                onDragStart={(e) => onDragStart(e, "rar", i)}
+                onDragEnd={onDragEnd}
+              >
+                ⠿
+              </span>
               <span className="swatch" style={{ background: r.color || "var(--muted)" }} />
               <input
                 className="vocab-name"
@@ -219,6 +294,7 @@ export default function SettingsPanel({ activeName = "" }) {
         })}
         <div className="actions">
           <button className="btn-ghost small" onClick={addRar}>+ Lägg till rarity</button>
+          <button className="btn-ghost small" onClick={resetRarities}>↺ Återställ standard</button>
           <button className="btn-primary" onClick={saveRarities}>Spara rarities</button>
         </div>
       </section>
