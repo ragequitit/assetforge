@@ -19,6 +19,14 @@ export async function POST(req) {
     const sizeRaw = Number(form.get("size"));
     const size = [256, 512, 1024].includes(sizeRaw) ? sizeRaw : 512;
     const outputName = (form.get("outputName") || "").toString().trim();
+    // Optional per-file names (aligned with the files, like the Rarity-tiers tab).
+    let names;
+    try {
+      names = JSON.parse(form.get("names") || "[]");
+    } catch {
+      names = [];
+    }
+    if (!Array.isArray(names)) names = [];
 
     const p = getPool();
     const profileId = await getActiveProfileId();
@@ -41,13 +49,19 @@ export async function POST(req) {
       }
     }
 
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       const buf = Buffer.from(await file.arrayBuffer());
       if (buf.length === 0) continue;
       if (buf.length > 15_000_000) continue; // skip absurdly large files (>~15MB)
 
+      const provided = (names[i] || "").toString().trim();
       let displayName, fname;
-      if (base) {
+      if (provided) {
+        // Per-file name from the panel — drives the output filename.
+        displayName = provided.slice(0, 120);
+        fname = `${slugify(provided) || "bild"}.png`;
+      } else if (base) {
         counter += 1;
         displayName = `${outputName} ${counter}`;
         fname = `${base}-${counter}.png`;

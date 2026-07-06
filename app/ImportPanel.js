@@ -13,7 +13,7 @@ export default function ImportPanel() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [size, setSize] = useState(512);
-  const [outputName, setOutputName] = useState("");
+  const [stagedFiles, setStagedFiles] = useState([]); // [{file, name}]
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -46,35 +46,48 @@ export default function ImportPanel() {
     return () => clearTimeout(t);
   }, [pending, items]);
 
-  async function onFiles(e) {
+  function onPickFiles(e) {
     const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
+    if (files.length) {
+      setStagedFiles((prev) => [
+        ...prev,
+        ...files.map((f) => ({ file: f, name: f.name.replace(/\.[a-z0-9]+$/i, "") })),
+      ]);
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  }
+  const removeStaged = (i) => setStagedFiles((prev) => prev.filter((_, k) => k !== i));
+  const setStagedName = (i, val) =>
+    setStagedFiles((prev) => prev.map((b, k) => (k === i ? { ...b, name: val } : b)));
+
+  async function process() {
+    if (stagedFiles.length === 0) return;
     setUploading(true);
     setStatus(null);
     let uploaded = 0;
     try {
-      for (let i = 0; i < files.length; i += CHUNK) {
-        const slice = files.slice(i, i + CHUNK);
+      for (let i = 0; i < stagedFiles.length; i += CHUNK) {
+        const slice = stagedFiles.slice(i, i + CHUNK);
         const fd = new FormData();
         fd.append("size", String(size));
-        fd.append("outputName", outputName);
-        for (const f of slice) fd.append("files", f);
+        fd.append("names", JSON.stringify(slice.map((b) => (b.name || "").trim())));
+        for (const b of slice) fd.append("files", b.file);
         const res = await fetch("/api/import", { method: "POST", body: fd });
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));
           throw new Error(d.error || "Uppladdning misslyckades.");
         }
         uploaded += slice.length;
-        setProgress(`Laddar upp ${uploaded}/${files.length}…`);
+        setProgress(`Laddar upp ${uploaded}/${stagedFiles.length}…`);
       }
       setProgress("");
+      setStagedFiles([]);
       setStatus({ kind: "ok", text: `${uploaded} bild(er) i kö — bakgrunden tas bort på servern.` });
       await loadItems();
     } catch (err) {
       setStatus({ kind: "err", text: err.message });
     } finally {
       setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
@@ -139,18 +152,33 @@ export default function ImportPanel() {
           <b> här</b>, separat från ditt vanliga Gallery. Tips: plana, enfärgade bakgrunder utan glöd
           och sparkles blir renast.
         </p>
+
         <div className="field">
-          <label htmlFor="imp-name">
-            Utnamn <span className="lbl-hint">— valfritt. Skriv t.ex. "dog" så får du dog-1, dog-2, dog-3 …</span>
+          <label>
+            Bilder
+            <span className="lbl-hint"> — namnet blir filnamnet (tomt = originalnamnet)</span>
           </label>
-          <input
-            id="imp-name"
-            type="text"
-            placeholder="lämna tomt för att behålla originalnamnen"
-            value={outputName}
-            onChange={(e) => setOutputName(e.target.value)}
-            disabled={uploading}
-          />
+          {stagedFiles.length > 0 && (
+            <div className="basefile-list">
+              {stagedFiles.map((b, i) => (
+                <span className="basefile" key={i}>
+                  <input
+                    className="basefile-name"
+                    type="text"
+                    value={b.name}
+                    placeholder="namn"
+                    onChange={(e) => setStagedName(i, e.target.value)}
+                    title={b.file?.name || ""}
+                    disabled={uploading}
+                  />
+                  <button title="Ta bort" onClick={() => removeStaged(i)} disabled={uploading}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <button className="btn-ghost small" onClick={() => fileRef.current?.click()} disabled={uploading}>
+            + Lägg till bilder
+          </button>
         </div>
 
         <div className="row" style={{ alignItems: "flex-end" }}>
@@ -162,8 +190,8 @@ export default function ImportPanel() {
           </div>
           <div className="field">
             <label>&nbsp;</label>
-            <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              {uploading ? progress || "Laddar upp…" : "Välj bilder att rensa"}
+            <button className="btn-primary" onClick={process} disabled={uploading || stagedFiles.length === 0}>
+              {uploading ? progress || "Laddar upp…" : `Rensa bakgrund${stagedFiles.length ? ` (${stagedFiles.length})` : ""}`}
             </button>
           </div>
         </div>
@@ -173,7 +201,7 @@ export default function ImportPanel() {
           accept="image/png,image/jpeg,image/webp"
           multiple
           hidden
-          onChange={onFiles}
+          onChange={onPickFiles}
         />
         {status && <div className={`status ${status.kind}`}>{status.text}</div>}
       </section>
