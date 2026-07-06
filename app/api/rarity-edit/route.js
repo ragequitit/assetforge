@@ -47,6 +47,13 @@ export async function POST(req) {
       ? String(form.get("quality"))
       : "high";
     const variants = Math.min(Math.max(Number(form.get("variants")) || 2, 1), 3);
+    let names;
+    try {
+      names = JSON.parse(form.get("names") || "[]");
+    } catch {
+      names = [];
+    }
+    if (!Array.isArray(names)) names = [];
 
     const prof = await getActiveProfile();
     if (!prof) return NextResponse.json({ error: "Ingen aktiv loadout." }, { status: 400 });
@@ -77,14 +84,18 @@ export async function POST(req) {
     const batchId = `edit_${Date.now()}`;
     const bases = [];
 
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       const buf = Buffer.from(await file.arrayBuffer());
       if (buf.length === 0) continue;
       if (buf.length > 15_000_000) continue; // skip absurdly large files (>~15MB)
 
-      const original = (file.name || "pet").replace(/\.[a-z0-9]+$/i, "");
-      const displayName = original.slice(0, 120);
-      const baseSlug = slugify(original);
+      // Use the name typed in the panel (lines up with file order); fall back to
+      // the uploaded file's own name. This name drives the output filenames.
+      const provided = (names[i] || "").toString().trim();
+      const fallback = (file.name || "pet").replace(/\.[a-z0-9]+$/i, "");
+      const displayName = (provided || fallback).slice(0, 120);
+      const baseSlug = slugify(displayName) || "pet";
 
       const r = await p.query(
         `INSERT INTO jobs

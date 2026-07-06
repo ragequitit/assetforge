@@ -114,10 +114,17 @@ export default function RarityEditPanel() {
 
   function onPickFiles(e) {
     const files = Array.from(e.target.files || []);
-    if (files.length) setBaseFiles((prev) => [...prev, ...files]);
+    if (files.length) {
+      setBaseFiles((prev) => [
+        ...prev,
+        ...files.map((f) => ({ file: f, name: f.name.replace(/\.[a-z0-9]+$/i, "") })),
+      ]);
+    }
     if (fileRef.current) fileRef.current.value = "";
   }
   const removeBaseFile = (i) => setBaseFiles((prev) => prev.filter((_, k) => k !== i));
+  const setBaseName = (i, val) =>
+    setBaseFiles((prev) => prev.map((b, k) => (k === i ? { ...b, name: val } : b)));
 
   async function generate() {
     if (baseFiles.length === 0) return setStatus({ kind: "err", text: "Lägg till minst en basbild." });
@@ -138,7 +145,10 @@ export default function RarityEditPanel() {
       fd.append("variants", String(variants));
       fd.append("quality", quality);
       fd.append("size", String(size));
-      for (const f of baseFiles) fd.append("files", f);
+      // Names line up with the files in append order — the output files are named
+      // <name>-<tier>.png, so "dog" → dog-common.png, dog-rare.png, …
+      fd.append("names", JSON.stringify(baseFiles.map((b) => (b.name || "").trim())));
+      for (const b of baseFiles) fd.append("files", b.file);
       const res = await fetch("/api/rarity-edit", { method: "POST", body: fd });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Kunde inte köa.");
@@ -268,12 +278,22 @@ export default function RarityEditPanel() {
 
         {/* base images */}
         <div className="field">
-          <label>Basbilder</label>
+          <label>
+            Basbilder
+            <span className="lbl-hint"> — namnet blir filnamnet: “dog” → dog-common, dog-rare …</span>
+          </label>
           {baseFiles.length > 0 && (
             <div className="basefile-list">
-              {baseFiles.map((f, i) => (
+              {baseFiles.map((b, i) => (
                 <span className="basefile" key={i}>
-                  {f.name}
+                  <input
+                    className="basefile-name"
+                    type="text"
+                    value={b.name}
+                    placeholder="namn"
+                    onChange={(e) => setBaseName(i, e.target.value)}
+                    title={b.file?.name || ""}
+                  />
                   <button title="Ta bort" onClick={() => removeBaseFile(i)}>×</button>
                 </span>
               ))}

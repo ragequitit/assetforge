@@ -1309,3 +1309,20 @@ button:disabled {
   resize: vertical;
   min-height: 42px;
 }
+
+/* Editable base-image name inside its chip (Rarity-tiers panel). */
+.basefile-name {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  width: 9ch;
+  min-width: 6ch;
+  max-width: 22ch;
+  padding: 2px 2px;
+  outline: none;
+}
+.basefile-name:focus {
+  border-bottom: 1px solid var(--accent);
+}
