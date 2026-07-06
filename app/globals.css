@@ -1296,3 +1296,16 @@ button:disabled {
   padding: 5px 9px;
   font-size: 13px;
 }
+
+/* Rarity rows in Settings now carry a second, full-width edit-instruction box. */
+.rarity-row { flex-wrap: wrap; }
+.rarity-edit {
+  flex-basis: 100%;
+  width: 100%;
+  margin-top: 6px;
+  padding: 7px 9px;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 42px;
+}

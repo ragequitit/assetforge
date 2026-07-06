@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_RARITIES, RARITY_EDIT_INSTRUCTIONS } from "@/lib/prompt";
 
-// The tier ladder for this flow (built-in set, minus "None").
-const TIERS = DEFAULT_RARITIES.filter((r) => r.name !== "None").map((r) => ({
+// Built-in tier ladder (fallback until the loadout's own rarities load).
+const BUILTIN_TIERS = DEFAULT_RARITIES.filter((r) => r.name !== "None").map((r) => ({
   name: r.name,
   color: r.color,
-  free: !((RARITY_EDIT_INSTRUCTIONS[r.name] || "").trim()), // Common = copy, no cost
+  free: !((RARITY_EDIT_INSTRUCTIONS[r.name] || "").trim()),
 }));
-const TIER_ORDER = TIERS.map((t) => t.name);
 
 // gpt-image-1.5 per-image cost by quality (1024², USD). Estimate only.
 const COST = { low: 0.009, medium: 0.034, high: 0.133 };
@@ -21,9 +20,12 @@ function kb(bytes) {
 
 export default function RarityEditPanel() {
   const [baseFiles, setBaseFiles] = useState([]); // File[]
-  const [selected, setSelected] = useState(
-    () => new Set(["Common", "Uncommon", "Rare", "Epic", "Legendary"])
-  );
+  // Tiers come from the ACTIVE LOADOUT (so custom rarities like "Shadow" appear);
+  // start from the built-in set until the first load returns.
+  const [tiers, setTiers] = useState(BUILTIN_TIERS);
+  const tierOrder = useMemo(() => tiers.map((t) => t.name), [tiers]);
+  const [selected, setSelected] = useState(() => new Set());
+  const defaultedRef = useRef(false);
   const [variants, setVariants] = useState(2);
   const [quality, setQuality] = useState("high");
   const [size, setSize] = useState(512);
@@ -51,6 +53,19 @@ export default function RarityEditPanel() {
         setItems(d.items || []);
         setPreparing(d.preparing || 0);
         setPrepErrors(d.prepErrors || []);
+        if (Array.isArray(d.tiers) && d.tiers.length) {
+          setTiers(d.tiers);
+          // First time we learn the loadout's tiers, pre-select the classic
+          // Common→Legendary span among whatever tiers actually exist.
+          if (!defaultedRef.current) {
+            defaultedRef.current = true;
+            const names = new Set(d.tiers.map((t) => t.name));
+            const pref = ["Common", "Uncommon", "Rare", "Epic", "Legendary"].filter((n) =>
+              names.has(n)
+            );
+            if (pref.length) setSelected(new Set(pref));
+          }
+        }
       }
     } catch {
       /* ignore */
@@ -72,11 +87,11 @@ export default function RarityEditPanel() {
 
   // --- cost preview ---
   const plan = useMemo(() => {
-    const chosen = TIER_ORDER.filter((t) => selected.has(t));
+    const chosen = tierOrder.filter((t) => selected.has(t));
     let apiJobs = 0;
     let freeJobs = 0;
     for (const t of chosen) {
-      const isFree = TIERS.find((x) => x.name === t)?.free;
+      const isFree = tiers.find((x) => x.name === t)?.free;
       if (isFree) freeJobs += 1;
       else apiJobs += variants;
     }
@@ -85,7 +100,7 @@ export default function RarityEditPanel() {
     const totalApi = apiJobs * nBase;
     const est = (totalApi * (COST[quality] || COST.high)).toFixed(2);
     return { chosen, perBase, nBase, totalApi, est };
-  }, [selected, variants, quality, baseFiles]);
+  }, [selected, variants, quality, baseFiles, tiers, tierOrder]);
 
   function toggleTier(name) {
     setSelected((prev) => {
@@ -94,7 +109,7 @@ export default function RarityEditPanel() {
       return next;
     });
   }
-  const selectAllTiers = () => setSelected(new Set(TIER_ORDER));
+  const selectAllTiers = () => setSelected(new Set(tierOrder));
   const clearTiers = () => setSelected(new Set());
 
   function onPickFiles(e) {
@@ -232,12 +247,12 @@ export default function RarityEditPanel() {
     }
     for (const arr of byName.values()) {
       arr.sort((a, b) => {
-        const d = TIER_ORDER.indexOf(a.rarity) - TIER_ORDER.indexOf(b.rarity);
+        const d = tierOrder.indexOf(a.rarity) - tierOrder.indexOf(b.rarity);
         return d !== 0 ? d : a.filename.localeCompare(b.filename);
       });
     }
     return [...byName.entries()];
-  }, [items, search]);
+  }, [items, search, tierOrder]);
 
   return (
     <div>
@@ -287,7 +302,7 @@ export default function RarityEditPanel() {
             </span>
           </label>
           <div className="tier-pick">
-            {TIERS.map((t) => (
+            {tiers.map((t) => (
               <label key={t.name} className={`tier-chip ${selected.has(t.name) ? "on" : ""}`}>
                 <input type="checkbox" checked={selected.has(t.name)} onChange={() => toggleTier(t.name)} />
                 <span className="swatch" style={{ background: t.color || "var(--muted)" }} />

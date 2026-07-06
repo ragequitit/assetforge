@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RARITY_PALETTE, DEFAULT_RARITIES } from "@/lib/prompt";
+import { RARITY_PALETTE, DEFAULT_RARITIES, RARITY_EDIT_INSTRUCTIONS } from "@/lib/prompt";
 
 export default function SettingsPanel({ activeName = "" }) {
   const [masterPrompt, setMasterPrompt] = useState("");
@@ -65,7 +65,15 @@ export default function SettingsPanel({ activeName = "" }) {
       setMasterPrompt(s.masterPrompt || "");
       setDefaultStyle(s.defaultStyle || "");
       setCategories(Array.isArray(s.categories) ? s.categories : []);
-      setRarities(Array.isArray(s.rarities) ? s.rarities : []);
+      setRarities(
+        (Array.isArray(s.rarities) ? s.rarities : []).map((r) => ({
+          ...r,
+          // Show the edit instruction that actually gets applied: use the stored
+          // one if present, otherwise the built-in default for that tier. Saving
+          // then makes it explicit for this loadout.
+          edit: typeof r.edit === "string" ? r.edit : RARITY_EDIT_INSTRUCTIONS[r.name] ?? "",
+        }))
+      );
       setCatDefaults(s.categoryDefaults || {});
       setHasReference(!!r.hasReference);
     } finally {
@@ -249,16 +257,19 @@ export default function SettingsPanel({ activeName = "" }) {
       <section className="panel">
         <label>Rarities</label>
         <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
-          Dina rarity-nivåer och <em>vad var och en gör med looken</em> (den texten läggs in i
-          bilden). Lägg till egna nivåer och skriv vad de ska betyda. <strong>None</strong> ger
-          ingen rarity-look alls — lämna den tom. Dra i <span aria-hidden="true">⠿</span> för att
-          ändra ordning — tryck sedan Spara.
+          Dina rarity-nivåer. <em>Look</em> = vad nivån gör när en bild <strong>genereras från
+          scratch</strong> (vävs in i prompten). <em>Edit</em> = vad nivån lägger på i fliken{" "}
+          <strong>Rarity-tiers</strong> när den redigerar en <strong>befintlig basbild</strong> —
+          lämna Edit tom för “kopiera basen rakt igenom” (gratis, ingen glow). Lägg gärna till egna
+          nivåer (t.ex. <strong>Shadow</strong>) med egen Edit-text — de dyker då upp att välja i
+          Rarity-tiers. <strong>None</strong> lämnas tom. Dra i <span aria-hidden="true">⠿</span>{" "}
+          för att ändra ordning — tryck sedan Spara.
         </p>
         {rarities.map((r, i) => {
           const isNone = r.name === "None";
           return (
             <div
-              className={`vocab-row${isDragging("rar", i) ? " dragging" : ""}`}
+              className={`vocab-row rarity-row${isDragging("rar", i) ? " dragging" : ""}`}
               key={i}
               onDragOver={(e) => e.preventDefault()}
               onDragEnter={() => onDragEnterRow("rar", setRarities, i)}
@@ -283,12 +294,21 @@ export default function SettingsPanel({ activeName = "" }) {
               <input
                 className="vocab-desc"
                 type="text"
-                placeholder={isNone ? "ingen rarity-look (lämnas tom)" : "vad den gör med looken"}
+                placeholder={isNone ? "ingen rarity-look (lämnas tom)" : "look — vad den gör (generera)"}
                 value={r.style}
                 disabled={isNone}
                 onChange={(e) => setRar(i, "style", e.target.value)}
               />
               <button className="icon-btn" title="Ta bort" onClick={() => removeRar(i)}>×</button>
+              {!isNone && (
+                <textarea
+                  className="rarity-edit"
+                  rows={2}
+                  placeholder="edit — vad som läggs på basbilden i Rarity-tiers (lämna tom = kopiera basen, gratis)"
+                  value={r.edit || ""}
+                  onChange={(e) => setRar(i, "edit", e.target.value)}
+                />
+              )}
             </div>
           );
         })}

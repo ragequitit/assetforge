@@ -1,20 +1,37 @@
 import { NextResponse } from "next/server";
-import { getPool, initSchema, getActiveProfileId } from "@/lib/db";
+import { getPool, initSchema, getActiveProfile } from "@/lib/db";
 import { slugify, RARITY_EDIT_INSTRUCTIONS, DEFAULT_RARITIES } from "@/lib/prompt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Tier order for validation/labels comes straight from the built-in ladder
-// (minus "None"), so this flow always offers the full 10-tier set regardless of
-// what a given loadout has configured.
-const TIER_ORDER = DEFAULT_RARITIES.map((r) => r.name).filter((n) => n !== "None");
-const VALID_TIERS = new Set(TIER_ORDER);
+// The tiers offered by this flow come from the ACTIVE LOADOUT's own rarities
+// (minus "None"), so a rarity you add in Settings — e.g. "Shadow" — shows up here
+// automatically. Each tier's edit instruction is the loadout rarity's `edit`
+// field; loadouts that predate that field fall back to the built-in text so the
+// standard tiers keep working. An empty edit = "copy the base" (free, no API).
+function loadoutTiers(prof) {
+  let rars;
+  try {
+    rars = prof?.rarities ? JSON.parse(prof.rarities) : null;
+  } catch {
+    rars = null;
+  }
+  if (!Array.isArray(rars) || rars.length === 0) rars = DEFAULT_RARITIES;
+  return rars
+    .filter((r) => r?.name && r.name !== "None")
+    .map((r) => {
+      const edit =
+        typeof r.edit === "string" ? r.edit : RARITY_EDIT_INSTRUCTIONS[r.name] ?? "";
+      return { name: r.name, color: r.color || "", edit, free: !edit.trim() };
+    });
+}
 
-// POST: receive base images (multipart "files") + which tiers to produce, and
-// queue one edit job per (base × tier × variant). Common is copied straight
-// through (empty edit_prompt = no API call). Other tiers run an image-to-image
-// edit against the base so identity is held and only glow/finish is added.
+// POST: receive base images (multipart "files") + which tiers to produce. Queues
+// one hidden prep job per base that cleans the upload to a transparent PNG and
+// then fans out the chosen tiers from that clean base (see worker). The resolved
+// edit text per tier is snapshotted into the plan, so later Settings edits don't
+// change a run that's already queued.
 export async function POST(req) {
   try {
     await initSchema();
@@ -31,23 +48,33 @@ export async function POST(req) {
       : "high";
     const variants = Math.min(Math.max(Number(form.get("variants")) || 2, 1), 3);
 
-    let tiers;
+    const prof = await getActiveProfile();
+    if (!prof) return NextResponse.json({ error: "Ingen aktiv loadout." }, { status: 400 });
+    const profileId = prof.id;
+
+    const tiers = loadoutTiers(prof);
+    const tierByName = new Map(tiers.map((t) => [t.name, t]));
+    const order = tiers.map((t) => t.name);
+
+    let requested;
     try {
-      tiers = JSON.parse(form.get("tiers") || "[]");
+      requested = JSON.parse(form.get("tiers") || "[]");
     } catch {
-      tiers = [];
+      requested = [];
     }
-    tiers = (Array.isArray(tiers) ? tiers : []).filter((t) => VALID_TIERS.has(t));
-    // Keep them in ladder order for tidy filenames/galleries.
-    tiers = TIER_ORDER.filter((t) => tiers.includes(t));
-    if (tiers.length === 0) {
+    // Keep only tiers that exist in this loadout, in the loadout's own order.
+    const selected = order.filter((n) => (Array.isArray(requested) ? requested : []).includes(n));
+    if (selected.length === 0) {
       return NextResponse.json({ error: "Inga giltiga tiers valda." }, { status: 400 });
     }
 
+    // Snapshot the resolved edit text per selected tier.
+    const edits = {};
+    for (const n of selected) edits[n] = tierByName.get(n).edit;
+    const plan = JSON.stringify({ variants, tiers: selected, edits });
+
     const p = getPool();
-    const profileId = await getActiveProfileId();
     const batchId = `edit_${Date.now()}`;
-    const plan = JSON.stringify({ tiers, variants });
     const bases = [];
 
     for (const file of files) {
@@ -59,8 +86,6 @@ export async function POST(req) {
       const displayName = original.slice(0, 120);
       const baseSlug = slugify(original);
 
-      // One hidden prep job per base: it cleans the upload to a transparent PNG
-      // and then fans out the chosen tiers from that clean base (see worker).
       const r = await p.query(
         `INSERT INTO jobs
            (name, category, rarity, size, quality, include_rarity, filename,
@@ -77,31 +102,27 @@ export async function POST(req) {
     }
 
     // Expected number of output images, for the confirmation message.
-    const perBase = tiers.reduce(
-      (sum, t) => sum + (t === "Common" || !(RARITY_EDIT_INSTRUCTIONS[t] || "").trim() ? 1 : variants),
-      0
-    );
-    return NextResponse.json({
-      batchId,
-      bases: bases.length,
-      count: bases.length * perBase,
-    });
+    const perBase = selected.reduce((sum, n) => sum + (tierByName.get(n).free ? 1 : variants), 0);
+    return NextResponse.json({ batchId, bases: bases.length, count: bases.length * perBase });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: err.message || "Kunde inte köa." }, { status: 500 });
   }
 }
 
-// GET: list this loadout's edit (rarity-tier) jobs, newest first, with the tier
-// color resolved from the built-in ladder so every tier (incl. Eternal) shows.
+// GET: the loadout's tier list (for the picker) + this loadout's edit results.
 export async function GET() {
   try {
     await initSchema();
     const p = getPool();
-    const activeId = await getActiveProfileId();
+    const prof = await getActiveProfile();
+    const activeId = prof?.id || null;
 
+    const tiers = loadoutTiers(prof);
     const rarityColor = {};
-    for (const r of DEFAULT_RARITIES) rarityColor[r.name] = r.color || "";
+    for (const t of tiers) rarityColor[t.name] = t.color;
+    // Fallback color for any rarity on older results not in the current loadout.
+    for (const r of DEFAULT_RARITIES) if (!(r.name in rarityColor)) rarityColor[r.name] = r.color;
 
     const r = await p.query(
       `SELECT id, name, rarity, size, filename, status, error,
@@ -139,20 +160,28 @@ export async function GET() {
       .filter((x) => x.status === "error")
       .map((x) => ({ name: x.name, error: x.error }));
 
-    return NextResponse.json({ items, count: items.length, tierOrder: TIER_ORDER, preparing, prepErrors });
+    return NextResponse.json({
+      items,
+      count: items.length,
+      tiers,
+      tierOrder: tiers.map((t) => t.name),
+      preparing,
+      prepErrors,
+    });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// DELETE: clear this loadout's edit jobs. ?scope=done clears only finished ones;
-// no scope clears everything in the edit gallery.
+// DELETE: clear this loadout's edit jobs (and hidden prep jobs). ?scope=done
+// clears only finished ones; no scope clears everything in the edit gallery.
 export async function DELETE(req) {
   try {
     await initSchema();
     const p = getPool();
-    const activeId = await getActiveProfileId();
+    const prof = await getActiveProfile();
+    const activeId = prof?.id || null;
     const scope = new URL(req.url).searchParams.get("scope");
     const cond = scope === "done" ? "AND status='done'" : "";
     const r = await p.query(

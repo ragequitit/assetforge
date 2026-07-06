@@ -46,6 +46,7 @@ function cleanRarities(list) {
     out.push({
       name,
       style: (r?.style || "").toString().trim().slice(0, 400),
+      edit: (r?.edit || "").toString().trim().slice(0, 800),
       color,
     });
     i++;

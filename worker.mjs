@@ -68,12 +68,16 @@ async function fanOutTiers(p, job, baseBuf) {
     plan = {};
   }
   const tiers = Array.isArray(plan.tiers) ? plan.tiers : [];
+  const edits = plan.edits && typeof plan.edits === "object" ? plan.edits : {};
   const variants = Math.min(Math.max(Number(plan.variants) || 2, 1), 3);
   const baseSlug = slugify(job.name || "pet");
   let n = 0;
   for (const tier of tiers) {
-    const instruction = RARITY_EDIT_INSTRUCTIONS[tier] || "";
-    const isCommon = tier === "Common" || !instruction.trim();
+    // Prefer the edit text snapshotted at enqueue (from the loadout's rarity);
+    // fall back to the built-in instruction for older jobs/standard tiers.
+    const instruction =
+      typeof edits[tier] === "string" ? edits[tier] : RARITY_EDIT_INSTRUCTIONS[tier] || "";
+    const isCommon = !instruction.trim();
     const count = isCommon ? 1 : variants;
     for (let v = 1; v <= count; v++) {
       const tierTag = tier.toLowerCase();
