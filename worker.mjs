@@ -145,7 +145,11 @@ async function processJob(p, job) {
     if (wantsAuto && autospriteConfigured()) {
       try {
         const r = await pushToAutoSprite(base, job.name);
-        console.log(`[worker] job ${job.id}: pushed to AutoSprite (char ${r.characterId}, ${r.creditsUsed ?? "?"} credits)`);
+        if (r.generated) {
+          console.log(`[worker] job ${job.id}: pushed to AutoSprite (char ${r.characterId}, ${r.creditsUsed ?? "?"} credits)`);
+        } else {
+          console.log(`[worker] job ${job.id}: prepared on AutoSprite (char ${r.characterId}) — generate animations there`);
+        }
       } catch (err) {
         console.warn(`[worker] job ${job.id}: AutoSprite push failed (${err.message})`);
       }

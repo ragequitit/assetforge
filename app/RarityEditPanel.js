@@ -363,12 +363,13 @@ export default function RarityEditPanel() {
           <div className="field" style={{ marginTop: 2 }}>
             <label className="tier-chip" style={{ cursor: "pointer", display: "inline-flex" }}>
               <input type="checkbox" checked={autosprite} onChange={(e) => setAutosprite(e.target.checked)} />
-              <span className="tier-name">🎞 Skicka även till AutoSprite (walk + idle)</span>
+              <span className="tier-name">🎞 Förbered djuret på AutoSprite</span>
             </label>
             <p className="hint" style={{ marginTop: 4 }}>
-              Skickar den rena basen till ditt AutoSprite-konto och startar walk + idle där. Stäng av
-              för sådant som inte ska animeras (t.ex. fordon). Animationerna finslipas och laddas ner
-              på AutoSprite — de dras inte hem hit.
+              Skapar figuren i ditt AutoSprite-konto från den rena basen (gratis, inga credits). Sen
+              går du till AutoSprite → Animate, väljer rörelser och trycker Generate själv — så hamnar
+              de i Preview och du styr kvaliteten. Stäng av för sådant som inte ska animeras (t.ex.
+              fordon).
             </p>
           </div>
         )}
