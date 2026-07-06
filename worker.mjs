@@ -129,7 +129,10 @@ async function processJob(p, job) {
   // base (a colored-background upload is fine — the pipeline removes it here).
   if (job.kind === "edit_base") {
     if (!job.source_image) throw new Error("Ingen basbild att förbereda.");
-    const base = await runPipeline(job.source_image, job.size);
+    // Clean the base at 1024 (the edit model's native output size) so the per-tier
+    // edits don't have to upscale it — that upscaling is a big source of face/paw
+    // redraw. Each tier's final PNG is still normalised to job.size afterwards.
+    const base = await runPipeline(job.source_image, Math.max(job.size, 1024));
     await fanOutTiers(p, job, base);
     // The prep job itself isn't shown; drop its heavy data now that tiers carry
     // the clean base. (The Common tier, if chosen, was queued as its own job.)
