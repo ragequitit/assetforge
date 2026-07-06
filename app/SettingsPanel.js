@@ -138,6 +138,33 @@ export default function SettingsPanel({ activeName = "" }) {
     flash(true, "Standard-rarities inlästa — granska och tryck Spara för att använda dem.");
   };
 
+  // Bulk-fill the Edit fields from a pasted block, one tier per line, e.g.
+  //   Rare → keep the base pet ... CRITICAL: ...
+  // Accepts →, -> or : as the separator (the FIRST one on the line), so any
+  // colons inside the text (like "CRITICAL:") are left untouched. Only lines
+  // whose leading word matches an existing rarity are used; blanks are ignored.
+  const [editBlock, setEditBlock] = useState("");
+  const importEditBlock = () => {
+    const nameMap = new Map(
+      rarities.filter((r) => (r.name || "").trim()).map((r) => [r.name.toLowerCase(), r.name])
+    );
+    const sepRe = /^\s*([A-Za-z][\w-]*)\s*(?:→|->|:)\s*(\S.*)$/;
+    const parsed = {};
+    for (const line of editBlock.split(/\r?\n/)) {
+      const m = line.match(sepRe);
+      if (!m) continue;
+      const canon = nameMap.get(m[1].toLowerCase());
+      if (!canon) continue;
+      parsed[canon] = m[2].trim();
+    }
+    const hit = Object.keys(parsed);
+    if (hit.length === 0) {
+      return flash(false, "Hittade inga rader på formen “Tier → text”. Kolla att tier-namnen stämmer.");
+    }
+    setRarities((prev) => prev.map((r) => (parsed[r.name] !== undefined ? { ...r, edit: parsed[r.name] } : r)));
+    flash(true, `Fyllde Edit på: ${hit.join(", ")}. Granska och tryck Spara rarities.`);
+  };
+
   function onPickReference(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -265,6 +292,27 @@ export default function SettingsPanel({ activeName = "" }) {
           Rarity-tiers. <strong>None</strong> lämnas tom. Dra i <span aria-hidden="true">⠿</span>{" "}
           för att ändra ordning — tryck sedan Spara.
         </p>
+
+        <details className="edit-import">
+          <summary>📋 Klistra in alla edit-instruktioner på en gång</summary>
+          <p className="hint" style={{ marginTop: 8 }}>
+            En rad per tier på formen <code>Tier → text</code> (även <code>Tier: text</code> går).
+            Bara Edit-fälten fylls; Look och färg rörs inte. <strong>Common</strong> brukar lämnas
+            tom (gratis kopia) — töm Common-fältet efter import om du vill ha gratis-versionen.
+            Fyller bara i — inget sparas förrän du trycker <em>Spara rarities</em>.
+          </p>
+          <textarea
+            className="edit-import-box"
+            rows={6}
+            placeholder={"Uncommon → keep the base pet ... CRITICAL: ...\nRare → keep the base pet ... CRITICAL: ...\nLegendary → ..."}
+            value={editBlock}
+            onChange={(e) => setEditBlock(e.target.value)}
+          />
+          <div className="actions" style={{ marginTop: 8 }}>
+            <button className="btn-ghost small" onClick={() => setEditBlock("")}>Rensa rutan</button>
+            <button className="btn-primary small" onClick={importEditBlock}>Fyll Edit-fälten</button>
+          </div>
+        </details>
         {rarities.map((r, i) => {
           const isNone = r.name === "None";
           return (

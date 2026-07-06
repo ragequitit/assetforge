@@ -1336,3 +1336,26 @@ button:disabled {
   background: color-mix(in srgb, var(--danger, #ef4444) 14%, transparent);
   border-color: var(--danger, #ef4444);
 }
+
+/* Paste-all edit-instructions box in Settings. */
+.edit-import {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--surface-2);
+}
+.edit-import > summary {
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  list-style: none;
+}
+.edit-import > summary::-webkit-details-marker { display: none; }
+.edit-import-box {
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 90px;
+}
