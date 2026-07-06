@@ -31,6 +31,7 @@ export default function RarityEditPanel() {
   const [quality, setQuality] = useState("high");
   const [size, setSize] = useState(512);
   const [petType, setPetType] = useState("matt"); // 'matt' | 'shiny'
+  const [shiny, setShiny] = useState(false);
   const [autosprite, setAutosprite] = useState(true);
   const [autospriteEnabled, setAutospriteEnabled] = useState(false);
   const isFree = (t) => (petType === "shiny" ? t.freeShiny : t.free);
@@ -101,12 +102,12 @@ export default function RarityEditPanel() {
       if (info && isFree(info)) freeJobs += 1;
       else apiJobs += variants;
     }
-    const perBase = apiJobs + freeJobs;
+    const perBase = apiJobs + freeJobs + (shiny ? 1 : 0);
     const nBase = baseFiles.length || 0;
-    const totalApi = apiJobs * nBase;
+    const totalApi = apiJobs * nBase + (shiny ? nBase : 0);
     const est = (totalApi * (COST[quality] || COST.high)).toFixed(2);
     return { chosen, perBase, nBase, totalApi, est };
-  }, [selected, variants, quality, baseFiles, tiers, tierOrder, petType]);
+  }, [selected, variants, quality, baseFiles, tiers, tierOrder, petType, shiny]);
 
   function toggleTier(name) {
     setSelected((prev) => {
@@ -134,7 +135,8 @@ export default function RarityEditPanel() {
 
   async function generate() {
     if (baseFiles.length === 0) return setStatus({ kind: "err", text: "Lägg till minst en basbild." });
-    if (plan.chosen.length === 0) return setStatus({ kind: "err", text: "Välj minst en tier." });
+    if (plan.chosen.length === 0 && !shiny)
+      return setStatus({ kind: "err", text: "Välj minst en tier, eller kryssa Shiny." });
     if (
       plan.totalApi > 20 &&
       !window.confirm(
@@ -155,6 +157,7 @@ export default function RarityEditPanel() {
       // <name>-<tier>.png, so "dog" → dog-common.png, dog-rare.png, …
       fd.append("names", JSON.stringify(baseFiles.map((b) => (b.name || "").trim())));
       fd.append("petType", petType);
+      fd.append("shiny", String(shiny));
       fd.append("autosprite", String(autosprite && autospriteEnabled));
       for (const b of baseFiles) fd.append("files", b.file);
       const res = await fetch("/api/rarity-edit", { method: "POST", body: fd });
@@ -282,8 +285,12 @@ export default function RarityEditPanel() {
       byName.get(it.name).push(it);
     }
     for (const arr of byName.values()) {
+      const rank = (r) => {
+        const i = tierOrder.indexOf(r);
+        return i === -1 ? 999 : i; // Shiny / unknown sort last
+      };
       arr.sort((a, b) => {
-        const d = tierOrder.indexOf(a.rarity) - tierOrder.indexOf(b.rarity);
+        const d = rank(a.rarity) - rank(b.rarity);
         return d !== 0 ? d : a.filename.localeCompare(b.filename);
       });
     }
@@ -359,6 +366,20 @@ export default function RarityEditPanel() {
           </p>
         </div>
 
+        {/* shiny — rarity-independent palette-shifted variant, one image per pet */}
+        <div className="field" style={{ marginTop: 2 }}>
+          <label className="tier-chip" style={{ cursor: "pointer", display: "inline-flex" }}>
+            <input type="checkbox" checked={shiny} onChange={(e) => setShiny(e.target.checked)} />
+            <span className="swatch" style={{ background: "var(--r-shiny)" }} />
+            <span className="tier-name">✨ Skapa Shiny (palett-skifte)</span>
+          </label>
+          <p className="hint" style={{ marginTop: 4 }}>
+            En extra bild per pet med hela paletten skiftad (som en Pokémon-shiny) — oberoende av
+            rarity. Följer Matt/Blank-valet ovan. Går att köra ensamt (utan att bocka i några tiers).
+            Hamnar som en egen “Shiny” i galleriet.
+          </p>
+        </div>
+
         {autospriteEnabled && (
           <div className="field" style={{ marginTop: 2 }}>
             <label className="tier-chip" style={{ cursor: "pointer", display: "inline-flex" }}>
@@ -425,9 +446,10 @@ export default function RarityEditPanel() {
           </div>
         </div>
 
-        {plan.nBase > 0 && plan.chosen.length > 0 && (
+        {plan.nBase > 0 && (plan.chosen.length > 0 || shiny) && (
           <p className="hint" style={{ marginTop: 4 }}>
-            {plan.nBase} basdjur × {plan.chosen.length} tiers → <b>{plan.totalApi}</b> edit-bilder
+            {plan.nBase} basdjur × {plan.chosen.length} tiers{shiny ? " + Shiny" : ""} →{" "}
+            <b>{plan.totalApi}</b> edit-bilder
             {plan.totalApi > 0 ? ` (uppskattat ~$${plan.est})` : ""} plus gratis Common-kopior.
           </p>
         )}

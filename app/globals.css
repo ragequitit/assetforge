@@ -1359,3 +1359,23 @@ button:disabled {
   resize: vertical;
   min-height: 90px;
 }
+
+/* Shiny variant swatch colour (rarity-independent special). */
+:root { --r-shiny: #f0a6ff; }
+
+/* Inline rename input on Remove BG result cards. */
+.card-rename {
+  width: 100%;
+  font-size: 13px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 6px;
+}
+.card-rename:hover { border-color: var(--border-soft); }
+.card-rename:focus {
+  border-color: var(--accent);
+  background: var(--surface-2);
+  outline: none;
+}

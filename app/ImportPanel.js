@@ -23,6 +23,42 @@ export default function ImportPanel() {
   const pending = items.filter((i) => i.status === "queued" || i.status === "processing").length;
   const done = items.filter((i) => i.status === "done");
 
+  // Inline rename of results (before zipping). Local edits keyed by job id.
+  const [nameEdits, setNameEdits] = useState({});
+  const stem = (fn) => (fn || "").replace(/\.[a-z0-9]+$/i, "");
+  const nameValue = (it) => (nameEdits[it.id] !== undefined ? nameEdits[it.id] : stem(it.filename));
+  const onNameChange = (id, v) => setNameEdits((p) => ({ ...p, [id]: v }));
+  async function saveRename(it) {
+    const v = (nameValue(it) || "").trim();
+    if (!v || v === stem(it.filename)) {
+      setNameEdits((p) => {
+        const n = { ...p };
+        delete n[it.id];
+        return n;
+      });
+      return;
+    }
+    try {
+      const res = await fetch("/api/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: it.id, name: v }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.filename) {
+        setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, filename: d.filename, name: d.name } : x)));
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setNameEdits((p) => {
+        const n = { ...p };
+        delete n[it.id];
+        return n;
+      });
+    }
+  }
+
   async function loadItems() {
     try {
       const res = await fetch("/api/import", { cache: "no-store" });
@@ -246,7 +282,17 @@ export default function ImportPanel() {
                 )}
               </div>
               <div className="card-body">
-                <div className="card-name" title={it.filename}>{it.filename}</div>
+                <input
+                  className="card-rename"
+                  type="text"
+                  value={nameValue(it)}
+                  title="Byt namn (sparas till zip-filnamnet)"
+                  onChange={(e) => onNameChange(it.id, e.target.value)}
+                  onBlur={() => saveRename(it)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                />
                 <div className="card-meta">
                   <span>{it.status === "done" ? "klar" : it.status === "error" ? "fel" : "bearbetar…"}</span>
                   {it.bytes ? <span>{kb(it.bytes)}</span> : null}

@@ -5,6 +5,8 @@ import {
   RARITY_EDIT_INSTRUCTIONS,
   RARITY_EDIT_INSTRUCTIONS_SHINY,
   DEFAULT_RARITIES,
+  SHINY_EDIT_A,
+  SHINY_EDIT_B,
 } from "@/lib/prompt";
 import { autospriteConfigured } from "@/lib/autosprite";
 
@@ -67,6 +69,7 @@ export async function POST(req) {
     const variants = Math.min(Math.max(Number(form.get("variants")) || 2, 1), 3);
     const petType = String(form.get("petType")) === "shiny" ? "shiny" : "matt";
     const autosprite = String(form.get("autosprite")) === "true" && autospriteConfigured();
+    const shiny = String(form.get("shiny")) === "true";
     let names;
     try {
       names = JSON.parse(form.get("names") || "[]");
@@ -91,8 +94,8 @@ export async function POST(req) {
     }
     // Keep only tiers that exist in this loadout, in the loadout's own order.
     const selected = order.filter((n) => (Array.isArray(requested) ? requested : []).includes(n));
-    if (selected.length === 0) {
-      return NextResponse.json({ error: "Inga giltiga tiers valda." }, { status: 400 });
+    if (selected.length === 0 && !shiny) {
+      return NextResponse.json({ error: "Välj minst en tier, eller kryssa Shiny." }, { status: 400 });
     }
 
     // Snapshot the resolved edit text per selected tier, from the chosen set.
@@ -102,7 +105,9 @@ export async function POST(req) {
       edits[n] = petType === "shiny" ? t.editShiny : t.editMatt;
     }
     const isFree = (n) => (petType === "shiny" ? tierByName.get(n).freeShiny : tierByName.get(n).free);
-    const plan = JSON.stringify({ variants, tiers: selected, edits, petType, autosprite });
+    // Shiny is a rarity-independent single extra edit; picks SET A/B like the tiers.
+    const shinyEdit = shiny ? (petType === "shiny" ? SHINY_EDIT_B : SHINY_EDIT_A) : "";
+    const plan = JSON.stringify({ variants, tiers: selected, edits, petType, autosprite, shiny, shinyEdit });
 
     const p = getPool();
     const batchId = `edit_${Date.now()}`;
@@ -137,7 +142,8 @@ export async function POST(req) {
     }
 
     // Expected number of output images, for the confirmation message.
-    const perBase = selected.reduce((sum, n) => sum + (isFree(n) ? 1 : variants), 0);
+    const perBase =
+      selected.reduce((sum, n) => sum + (isFree(n) ? 1 : variants), 0) + (shiny ? 1 : 0);
     return NextResponse.json({ batchId, bases: bases.length, count: bases.length * perBase });
   } catch (err) {
     console.error(err);
@@ -158,6 +164,7 @@ export async function GET() {
     for (const t of tiers) rarityColor[t.name] = t.color;
     // Fallback color for any rarity on older results not in the current loadout.
     for (const r of DEFAULT_RARITIES) if (!(r.name in rarityColor)) rarityColor[r.name] = r.color;
+    rarityColor["Shiny"] = "var(--r-shiny)";
 
     const r = await p.query(
       `SELECT id, name, rarity, size, filename, status, error,

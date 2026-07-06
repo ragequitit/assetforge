@@ -24,7 +24,7 @@ import os
 import sys
 from collections import deque
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 try:
     import numpy as np
@@ -110,6 +110,34 @@ def remove_background_floodfill(img: Image.Image, tolerance: int = 30) -> Image.
     return Image.fromarray(arr, "RGBA")
 
 
+def clean_edges(img: Image.Image, erode: int = 1, feather: float = 0.8) -> Image.Image:
+    """
+    Tidy the alpha edge left by background removal.
+
+    Background removers (rembg / flood-fill) tend to leave a HARD, slightly
+    jagged cut and often a 1px ring of leftover background colour (a pale/grey
+    fringe) right at the outline. This:
+      1. erodes the opaque region by ~`erode` px  -> shaves that fringe ring off
+      2. gaussian-blurs the alpha by `feather` px  -> anti-aliases the hard edge
+    Only the alpha channel is touched, so the artwork's colours are untouched.
+
+    Applied ONLY on the background-removal path — images that arrive already
+    transparent (the gpt-image tiers with their soft glow/sparkles) keep their
+    original edges and are never eroded.
+    """
+    img = img.convert("RGBA")
+    alpha = img.getchannel("A")
+    if erode and erode > 0:
+        # MinFilter shrinks the opaque area by ~(k-1)/2 px, removing the outer
+        # fringe row that carries the leftover background colour.
+        k = 2 * int(erode) + 1
+        alpha = alpha.filter(ImageFilter.MinFilter(k))
+    if feather and feather > 0:
+        alpha = alpha.filter(ImageFilter.GaussianBlur(float(feather)))
+    img.putalpha(alpha)
+    return img
+
+
 def subject_bbox(img: Image.Image, alpha_threshold: int):
     """
     Bounding box of the *solid* subject.
@@ -166,6 +194,20 @@ def main() -> int:
     parser.add_argument("--padding", type=float, default=0.08, help="padding as ratio of size")
     parser.add_argument("--tolerance", type=int, default=30, help="flood-fill color tolerance")
     parser.add_argument(
+        "--edge-erode",
+        type=int,
+        default=1,
+        help="px to shave off the outer edge after background removal, to drop the "
+        "leftover-background fringe (0 = off; only affects the bg-removal path)",
+    )
+    parser.add_argument(
+        "--edge-feather",
+        type=float,
+        default=0.8,
+        help="gaussian blur radius to anti-alias hard edges after background removal "
+        "(0 = off; only affects the bg-removal path)",
+    )
+    parser.add_argument(
         "--alpha-threshold",
         type=int,
         default=16,
@@ -185,6 +227,9 @@ def main() -> int:
         img = img.convert("RGBA")
     else:
         img = remove_background(img)
+        # Tidy the fresh cut (fringe + hard edge). Already-transparent inputs are
+        # deliberately left untouched so their soft glow/sparkles survive.
+        img = clean_edges(img, erode=args.edge_erode, feather=args.edge_feather)
 
     result = trim_center_pad(
         img, size=args.size, padding_ratio=args.padding, alpha_threshold=args.alpha_threshold

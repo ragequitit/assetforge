@@ -105,6 +105,19 @@ async function fanOutTiers(p, job, baseBuf) {
       n++;
     }
   }
+
+  // Shiny — one rarity-independent palette-shifted image per pet (if requested).
+  if (plan.shiny && typeof plan.shinyEdit === "string" && plan.shinyEdit.trim()) {
+    await p.query(
+      `INSERT INTO jobs
+         (name, category, rarity, size, quality, include_rarity, filename,
+          status, kind, source_image, edit_prompt, profile_id, batch_id)
+       VALUES ($1,'Pet','Shiny',$2,$3,true,$4,'queued','edit',$5,$6,$7,$8)`,
+      [job.name, job.size, job.quality, `${baseSlug}-shiny.png`, baseBuf, plan.shinyEdit, job.profile_id, job.batch_id]
+    );
+    n++;
+  }
+
   console.log(`[worker] job ${job.id}: base cleaned, fanned out ${n} tier job(s)`);
 }
 
