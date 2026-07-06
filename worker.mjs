@@ -31,9 +31,11 @@ const ENRICH_ENABLED = !["off", "0", "false", "no"].includes(
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function runPython(input, output, size) {
+function runPython(input, output, size, method) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(PYTHON_BIN, [SCRIPT, input, output, "--size", String(size)]);
+    const args = [SCRIPT, input, output, "--size", String(size)];
+    if (method) args.push("--method", String(method));
+    const proc = spawn(PYTHON_BIN, args);
     let stderr = "";
     proc.stderr.on("data", (d) => (stderr += d.toString()));
     proc.on("error", (err) => reject(new Error(`Python-start misslyckades: ${err.message}`)));
@@ -45,13 +47,13 @@ function runPython(input, output, size) {
 
 // Run the raw image bytes through the Python post-processor and return the
 // finished PNG bytes (transparent, cropped, centred, normalised to `size`).
-async function runPipeline(rawBuf, size) {
+async function runPipeline(rawBuf, size, method) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "asset-"));
   try {
     const rawPath = path.join(tmp, "raw.png");
     const outPath = path.join(tmp, "out.png");
     fs.writeFileSync(rawPath, rawBuf);
-    await runPython(rawPath, outPath, size);
+    await runPython(rawPath, outPath, size, method);
     return fs.readFileSync(outPath);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -229,7 +231,11 @@ async function processJob(p, job) {
     });
   }
 
-  const processed = await runPipeline(raw, job.size);
+  const processed = await runPipeline(
+    raw,
+    job.size,
+    job.kind === "import" ? job.bg_method || undefined : undefined
+  );
   if (job.kind === "import") {
     // Store the result and drop the now-unneeded source to reclaim space.
     await p.query(

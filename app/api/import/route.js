@@ -19,6 +19,9 @@ export async function POST(req) {
     const sizeRaw = Number(form.get("size"));
     const size = [256, 512, 1024].includes(sizeRaw) ? sizeRaw : 512;
     const outputName = (form.get("outputName") || "").toString().trim();
+    const method = ["auto", "rembg", "floodfill"].includes(String(form.get("method")))
+      ? String(form.get("method"))
+      : "floodfill"; // flat solid backgrounds behind an outline clean up best this way
     // Optional per-file names (aligned with the files, like the Rarity-tiers tab).
     let names;
     try {
@@ -74,10 +77,10 @@ export async function POST(req) {
       const r = await p.query(
         `INSERT INTO jobs
            (name, category, rarity, size, quality, include_rarity, filename,
-            status, kind, source_image, profile_id, batch_id)
-         VALUES ($1,'Import','None',$2,'medium',false,$3,'queued','import',$4,$5,$6)
+            status, kind, source_image, profile_id, batch_id, bg_method)
+         VALUES ($1,'Import','None',$2,'medium',false,$3,'queued','import',$4,$5,$6,$7)
          RETURNING id`,
-        [displayName, size, fname, buf, profileId, batchId]
+        [displayName, size, fname, buf, profileId, batchId, method]
       );
       jobs.push({ id: String(r.rows[0].id), name: displayName, filename: fname });
     }

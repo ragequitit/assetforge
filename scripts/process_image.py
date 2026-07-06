@@ -46,8 +46,18 @@ def has_transparency(img: Image.Image) -> bool:
     return False
 
 
-def remove_background(img: Image.Image) -> Image.Image:
-    """Remove the background, preferring rembg, falling back to flood-fill."""
+def remove_background(img: Image.Image, method: str = "auto") -> Image.Image:
+    """
+    Remove the background.
+      - method="floodfill": force the corner flood-fill (best for FLAT, solid
+        backgrounds behind an outlined subject — stops crisply at the outline and
+        never nags it, which rembg can do on low-contrast pale edges).
+      - method="rembg" / "auto": use rembg if available (best for photos/complex
+        backgrounds), falling back to flood-fill if rembg is missing.
+    """
+    if method == "floodfill":
+        log("removing background with flood-fill (forced)")
+        return remove_background_floodfill(img)
     try:
         from rembg import remove  # type: ignore
         log("removing background with rembg")
@@ -194,6 +204,14 @@ def main() -> int:
     parser.add_argument("--padding", type=float, default=0.08, help="padding as ratio of size")
     parser.add_argument("--tolerance", type=int, default=30, help="flood-fill color tolerance")
     parser.add_argument(
+        "--method",
+        choices=["auto", "rembg", "floodfill"],
+        default="auto",
+        help="background removal method: auto/rembg use the AI matte (photos), "
+        "floodfill removes a flat solid background and stops at the outline "
+        "(cleanest for outlined game-asset illustrations)",
+    )
+    parser.add_argument(
         "--edge-erode",
         type=int,
         default=1,
@@ -226,7 +244,7 @@ def main() -> int:
         log("image already transparent; skipping background removal")
         img = img.convert("RGBA")
     else:
-        img = remove_background(img)
+        img = remove_background(img, method=args.method)
         # Tidy the fresh cut (fringe + hard edge). Already-transparent inputs are
         # deliberately left untouched so their soft glow/sparkles survive.
         img = clean_edges(img, erode=args.edge_erode, feather=args.edge_feather)

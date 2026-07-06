@@ -13,6 +13,7 @@ export default function ImportPanel() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [size, setSize] = useState(512);
+  const [method, setMethod] = useState("floodfill"); // 'floodfill' | 'rembg'
   const [stagedFiles, setStagedFiles] = useState([]); // [{file, name}]
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
@@ -106,6 +107,7 @@ export default function ImportPanel() {
         const slice = stagedFiles.slice(i, i + CHUNK);
         const fd = new FormData();
         fd.append("size", String(size));
+        fd.append("method", method);
         fd.append("names", JSON.stringify(slice.map((b) => (b.name || "").trim())));
         for (const b of slice) fd.append("files", b.file);
         const res = await fetch("/api/import", { method: "POST", body: fd });
@@ -219,6 +221,13 @@ export default function ImportPanel() {
 
         <div className="row" style={{ alignItems: "flex-end" }}>
           <div className="field">
+            <label htmlFor="imp-method">Bakgrund</label>
+            <select id="imp-method" value={method} onChange={(e) => setMethod(e.target.value)} disabled={uploading}>
+              <option value="floodfill">Enfärgad bakgrund (renast)</option>
+              <option value="rembg">AI / foto</option>
+            </select>
+          </div>
+          <div className="field">
             <label htmlFor="imp-size">Utstorlek</label>
             <select id="imp-size" value={size} onChange={(e) => setSize(Number(e.target.value))} disabled={uploading}>
               {[256, 512, 1024].map((s) => <option key={s} value={s}>{s} × {s}</option>)}
@@ -231,6 +240,11 @@ export default function ImportPanel() {
             </button>
           </div>
         </div>
+        <p className="hint" style={{ marginTop: 2 }}>
+          <b>Enfärgad bakgrund</b> tar bort en plan, enfärgad bakgrund och stannar exakt vid den
+          svarta konturen — renast för spel-illustrationer (ägg, pets m.m.). <b>AI / foto</b> för
+          bilder med skuggor eller rörig bakgrund.
+        </p>
         <input
           ref={fileRef}
           type="file"
