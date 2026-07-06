@@ -20,6 +20,7 @@
   --r-mythical: #ef4444;
   --r-artifact: #34e0d0;
   --r-heavenly: #fff0a8;
+  --r-eternal: #bfefff;
   --r-cosmic: #7b5cff;
 }
 
@@ -1194,3 +1195,104 @@ button:disabled {
 }
 .anim-thumb.sel { border-color: var(--accent); }
 .anim-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+/* ---- Rarity-tiers-from-base panel ---- */
+.basefile-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.basefile {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 13px;
+  max-width: 100%;
+}
+.basefile button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.basefile button:hover { color: var(--text); }
+.linklike {
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+.linklike:hover { text-decoration: underline; }
+.tier-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tier-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-2);
+  cursor: pointer;
+  font-size: 14px;
+  user-select: none;
+}
+.tier-chip.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+}
+.tier-chip input { margin: 0; }
+.tier-chip .tier-name { font-weight: 500; }
+.tier-chip .tier-free {
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 0 5px;
+}
+.tier-group { margin-bottom: 18px; }
+.tier-group-head {
+  font-weight: 600;
+  margin: 6px 2px 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.card-pick {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.card-body .card-name .swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.search-mini {
+  flex: 0 1 160px;
+  min-width: 110px;
+  padding: 5px 9px;
+  font-size: 13px;
+}

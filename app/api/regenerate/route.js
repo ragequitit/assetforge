@@ -19,6 +19,30 @@ export async function POST(req) {
       return NextResponse.json({ error: "Hittade inte den assetet." }, { status: 404 });
     }
     const j = src.rows[0];
+
+    // Edit jobs (rarity-tiers-from-base) re-roll by cloning the base image and
+    // the raw edit instruction into a fresh edit job — not a generate job.
+    if (j.kind === "edit") {
+      if (!j.source_image) {
+        return NextResponse.json(
+          { error: "Basbilden är rensad — kan inte re-rolla den här tiern." },
+          { status: 400 }
+        );
+      }
+      const r = await p.query(
+        `INSERT INTO jobs
+           (name, category, rarity, size, quality, include_rarity, filename,
+            status, kind, source_image, edit_prompt, profile_id, batch_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'queued','edit',$8,$9,$10,$11)
+         RETURNING id`,
+        [
+          j.name, j.category, j.rarity, j.size, j.quality, j.include_rarity,
+          j.filename, j.source_image, j.edit_prompt, j.profile_id, `reroll_${Date.now()}`,
+        ]
+      );
+      return NextResponse.json({ id: String(r.rows[0].id), filename: j.filename });
+    }
+
     const r = await p.query(
       `INSERT INTO jobs
          (name, category, rarity, size, notes, quality, include_rarity, filename,

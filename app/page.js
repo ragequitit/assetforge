@@ -7,6 +7,7 @@ import GalleryPanel from "./GalleryPanel";
 import SettingsPanel from "./SettingsPanel";
 import AnimatePanel from "./AnimatePanel";
 import ImportPanel from "./ImportPanel";
+import RarityEditPanel from "./RarityEditPanel";
 
 export default function Page() {
   const [tab, setTab] = useState("single");
@@ -221,6 +222,14 @@ export default function Page() {
           </button>
           <button
             role="tab"
+            aria-selected={tab === "rarity"}
+            className={`tab ${tab === "rarity" ? "active" : ""}`}
+            onClick={() => setTab("rarity")}
+          >
+            Rarity-tiers
+          </button>
+          <button
+            role="tab"
             aria-selected={tab === "settings"}
             className={`tab ${tab === "settings" ? "active" : ""}`}
             onClick={() => setTab("settings")}
@@ -259,6 +268,7 @@ export default function Page() {
       {tab === "gallery" && <GalleryPanel key={refreshKey} includeRarity={includeRarity} />}
       {tab === "animate" && <AnimatePanel key={refreshKey} />}
       {tab === "import" && <ImportPanel key={refreshKey} />}
+      {tab === "rarity" && <RarityEditPanel key={refreshKey} />}
       {tab === "settings" && <SettingsPanel key={refreshKey} activeName={activeName} />}
     </main>
   );
