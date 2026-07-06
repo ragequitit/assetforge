@@ -140,6 +140,7 @@ export async function GET() {
               octet_length(image) AS bytes, created_at, batch_id
          FROM jobs
         WHERE kind='edit' AND profile_id=$1 AND deleted_at IS NULL
+              AND status <> 'cancelled'
         ORDER BY created_at DESC, id DESC
         LIMIT 800`,
       [activeId]

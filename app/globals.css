@@ -1326,3 +1326,13 @@ button:disabled {
 .basefile-name:focus {
   border-bottom: 1px solid var(--accent);
 }
+
+/* Cancel / destructive small button (e.g. Avbryt körning). */
+.btn-ghost.danger {
+  color: var(--danger, #ef4444);
+  border-color: color-mix(in srgb, var(--danger, #ef4444) 45%, transparent);
+}
+.btn-ghost.danger:hover {
+  background: color-mix(in srgb, var(--danger, #ef4444) 14%, transparent);
+  border-color: var(--danger, #ef4444);
+}

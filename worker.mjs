@@ -61,6 +61,17 @@ async function runPipeline(rawBuf, size) {
 // chosen tier FROM THAT CLEAN BASE (tiers are independent edits, never stacked).
 // Common carries an empty instruction = copied straight through (no API cost).
 async function fanOutTiers(p, job, baseBuf) {
+  // If the run was cancelled while this base was being cleaned, don't queue any
+  // more tier edits (a cancelled sibling in the same batch signals the stop).
+  const cancelled = await p.query(
+    `SELECT 1 FROM jobs WHERE batch_id=$1 AND status='cancelled' LIMIT 1`,
+    [job.batch_id]
+  );
+  if (cancelled.rows.length) {
+    console.log(`[worker] job ${job.id}: run cancelled, skipping fan-out`);
+    return;
+  }
+
   let plan;
   try {
     plan = JSON.parse(job.edit_plan || "{}");

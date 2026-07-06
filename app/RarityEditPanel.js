@@ -165,6 +165,24 @@ export default function RarityEditPanel() {
     }
   }
 
+  async function cancelRun() {
+    try {
+      const res = await fetch("/api/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: "rarity" }),
+      });
+      const d = await res.json().catch(() => ({}));
+      await loadItems();
+      setStatus({
+        kind: "ok",
+        text: `Avbrutet — ${d.cancelled || 0} kvarvarande jobb stoppade. Bilder som redan var igång blir klara.`,
+      });
+    } catch {
+      setStatus({ kind: "err", text: "Kunde inte avbryta." });
+    }
+  }
+
   async function reroll(it) {
     try {
       await fetch("/api/regenerate", {
@@ -385,12 +403,17 @@ export default function RarityEditPanel() {
       ))}
 
       {/* results toolbar */}
-      {(pending > 0 || done.length > 0 || failed.length > 0) && (
+      {(preparing > 0 || pending > 0 || done.length > 0 || failed.length > 0) && (
         <div className="select-bar">
           <span>
             {done.length} klara{pending > 0 ? ` · ${pending} kvar…` : ""}
             {failed.length > 0 ? ` · ${failed.length} fel` : ""}
           </span>
+          {(pending > 0 || preparing > 0) && (
+            <button className="btn-ghost small danger" onClick={cancelRun}>
+              ✕ Avbryt körning
+            </button>
+          )}
           <input
             className="search-mini"
             type="text"
