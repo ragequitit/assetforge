@@ -17,6 +17,7 @@ import {
   slugify,
 } from "./lib/prompt.js";
 import { generateImage, enrichPrompt, editImage } from "./lib/providers.js";
+import { pushToAutoSprite, autospriteConfigured } from "./lib/autosprite.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PYTHON_BIN = process.env.PYTHON_BIN || "python3";
@@ -134,6 +135,21 @@ async function processJob(p, job) {
     // redraw. Each tier's final PNG is still normalised to job.size afterwards.
     const base = await runPipeline(job.source_image, Math.max(job.size, 1024));
     await fanOutTiers(p, job, base);
+
+    // Optional fire-and-forget push to AutoSprite (walk + idle). Only when the
+    // batch asked for it AND a key is configured. Never blocks/fails the tiers.
+    let wantsAuto = false;
+    try {
+      wantsAuto = !!JSON.parse(job.edit_plan || "{}").autosprite;
+    } catch {}
+    if (wantsAuto && autospriteConfigured()) {
+      try {
+        const r = await pushToAutoSprite(base, job.name);
+        console.log(`[worker] job ${job.id}: pushed to AutoSprite (char ${r.characterId}, ${r.creditsUsed ?? "?"} credits)`);
+      } catch (err) {
+        console.warn(`[worker] job ${job.id}: AutoSprite push failed (${err.message})`);
+      }
+    }
     // The prep job itself isn't shown; drop its heavy data now that tiers carry
     // the clean base. (The Common tier, if chosen, was queued as its own job.)
     await p.query(

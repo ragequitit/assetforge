@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server";
 import { getPool, initSchema, getActiveProfile } from "@/lib/db";
-import { slugify, RARITY_EDIT_INSTRUCTIONS, DEFAULT_RARITIES } from "@/lib/prompt";
+import {
+  slugify,
+  RARITY_EDIT_INSTRUCTIONS,
+  RARITY_EDIT_INSTRUCTIONS_SHINY,
+  DEFAULT_RARITIES,
+} from "@/lib/prompt";
+import { autospriteConfigured } from "@/lib/autosprite";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // The tiers offered by this flow come from the ACTIVE LOADOUT's own rarities
 // (minus "None"), so a rarity you add in Settings — e.g. "Shadow" — shows up here
-// automatically. Each tier's edit instruction is the loadout rarity's `edit`
-// field; loadouts that predate that field fall back to the built-in text so the
-// standard tiers keep working. An empty edit = "copy the base" (free, no API).
+// automatically. Each tier carries TWO edit instructions: `edit` (matt/fur, SET A)
+// and `editShiny` (shiny/metal, SET B). The Pet-type selector picks which one is
+// used. Loadouts that predate a field fall back to the built-in set. An empty
+// instruction = "copy the base" (free, no API).
 function loadoutTiers(prof) {
   let rars;
   try {
@@ -21,9 +28,20 @@ function loadoutTiers(prof) {
   return rars
     .filter((r) => r?.name && r.name !== "None")
     .map((r) => {
-      const edit =
+      const editMatt =
         typeof r.edit === "string" ? r.edit : RARITY_EDIT_INSTRUCTIONS[r.name] ?? "";
-      return { name: r.name, color: r.color || "", edit, free: !edit.trim() };
+      const editShiny =
+        typeof r.editShiny === "string"
+          ? r.editShiny
+          : RARITY_EDIT_INSTRUCTIONS_SHINY[r.name] ?? "";
+      return {
+        name: r.name,
+        color: r.color || "",
+        editMatt,
+        editShiny,
+        free: !editMatt.trim(),
+        freeShiny: !editShiny.trim(),
+      };
     });
 }
 
@@ -47,6 +65,8 @@ export async function POST(req) {
       ? String(form.get("quality"))
       : "high";
     const variants = Math.min(Math.max(Number(form.get("variants")) || 2, 1), 3);
+    const petType = String(form.get("petType")) === "shiny" ? "shiny" : "matt";
+    const autosprite = String(form.get("autosprite")) === "true" && autospriteConfigured();
     let names;
     try {
       names = JSON.parse(form.get("names") || "[]");
@@ -75,10 +95,14 @@ export async function POST(req) {
       return NextResponse.json({ error: "Inga giltiga tiers valda." }, { status: 400 });
     }
 
-    // Snapshot the resolved edit text per selected tier.
+    // Snapshot the resolved edit text per selected tier, from the chosen set.
     const edits = {};
-    for (const n of selected) edits[n] = tierByName.get(n).edit;
-    const plan = JSON.stringify({ variants, tiers: selected, edits });
+    for (const n of selected) {
+      const t = tierByName.get(n);
+      edits[n] = petType === "shiny" ? t.editShiny : t.editMatt;
+    }
+    const isFree = (n) => (petType === "shiny" ? tierByName.get(n).freeShiny : tierByName.get(n).free);
+    const plan = JSON.stringify({ variants, tiers: selected, edits, petType, autosprite });
 
     const p = getPool();
     const batchId = `edit_${Date.now()}`;
@@ -113,7 +137,7 @@ export async function POST(req) {
     }
 
     // Expected number of output images, for the confirmation message.
-    const perBase = selected.reduce((sum, n) => sum + (tierByName.get(n).free ? 1 : variants), 0);
+    const perBase = selected.reduce((sum, n) => sum + (isFree(n) ? 1 : variants), 0);
     return NextResponse.json({ batchId, bases: bases.length, count: bases.length * perBase });
   } catch (err) {
     console.error(err);
@@ -175,10 +199,11 @@ export async function GET() {
     return NextResponse.json({
       items,
       count: items.length,
-      tiers,
+      tiers: tiers.map((t) => ({ name: t.name, color: t.color, free: t.free, freeShiny: t.freeShiny })),
       tierOrder: tiers.map((t) => t.name),
       preparing,
       prepErrors,
+      autospriteEnabled: autospriteConfigured(),
     });
   } catch (err) {
     console.error(err);

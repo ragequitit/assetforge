@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_RARITIES, RARITY_EDIT_INSTRUCTIONS } from "@/lib/prompt";
+import { DEFAULT_RARITIES, RARITY_EDIT_INSTRUCTIONS, RARITY_EDIT_INSTRUCTIONS_SHINY } from "@/lib/prompt";
 
 // Built-in tier ladder (fallback until the loadout's own rarities load).
 const BUILTIN_TIERS = DEFAULT_RARITIES.filter((r) => r.name !== "None").map((r) => ({
   name: r.name,
   color: r.color,
   free: !((RARITY_EDIT_INSTRUCTIONS[r.name] || "").trim()),
+  freeShiny: !((RARITY_EDIT_INSTRUCTIONS_SHINY[r.name] || "").trim()),
 }));
 
 // gpt-image-1.5 per-image cost by quality (1024², USD). Estimate only.
@@ -29,6 +30,10 @@ export default function RarityEditPanel() {
   const [variants, setVariants] = useState(2);
   const [quality, setQuality] = useState("high");
   const [size, setSize] = useState(512);
+  const [petType, setPetType] = useState("matt"); // 'matt' | 'shiny'
+  const [autosprite, setAutosprite] = useState(true);
+  const [autospriteEnabled, setAutospriteEnabled] = useState(false);
+  const isFree = (t) => (petType === "shiny" ? t.freeShiny : t.free);
 
   const [items, setItems] = useState([]);
   const [preparing, setPreparing] = useState(0);
@@ -53,6 +58,7 @@ export default function RarityEditPanel() {
         setItems(d.items || []);
         setPreparing(d.preparing || 0);
         setPrepErrors(d.prepErrors || []);
+        setAutospriteEnabled(!!d.autospriteEnabled);
         if (Array.isArray(d.tiers) && d.tiers.length) {
           setTiers(d.tiers);
           // First time we learn the loadout's tiers, pre-select the classic
@@ -91,8 +97,8 @@ export default function RarityEditPanel() {
     let apiJobs = 0;
     let freeJobs = 0;
     for (const t of chosen) {
-      const isFree = tiers.find((x) => x.name === t)?.free;
-      if (isFree) freeJobs += 1;
+      const info = tiers.find((x) => x.name === t);
+      if (info && isFree(info)) freeJobs += 1;
       else apiJobs += variants;
     }
     const perBase = apiJobs + freeJobs;
@@ -100,7 +106,7 @@ export default function RarityEditPanel() {
     const totalApi = apiJobs * nBase;
     const est = (totalApi * (COST[quality] || COST.high)).toFixed(2);
     return { chosen, perBase, nBase, totalApi, est };
-  }, [selected, variants, quality, baseFiles, tiers, tierOrder]);
+  }, [selected, variants, quality, baseFiles, tiers, tierOrder, petType]);
 
   function toggleTier(name) {
     setSelected((prev) => {
@@ -148,6 +154,8 @@ export default function RarityEditPanel() {
       // Names line up with the files in append order — the output files are named
       // <name>-<tier>.png, so "dog" → dog-common.png, dog-rare.png, …
       fd.append("names", JSON.stringify(baseFiles.map((b) => (b.name || "").trim())));
+      fd.append("petType", petType);
+      fd.append("autosprite", String(autosprite && autospriteEnabled));
       for (const b of baseFiles) fd.append("files", b.file);
       const res = await fetch("/api/rarity-edit", { method: "POST", body: fd });
       const d = await res.json().catch(() => ({}));
@@ -330,6 +338,41 @@ export default function RarityEditPanel() {
           />
         </div>
 
+        {/* pet type — picks which edit set (matt vs shiny) is used */}
+        <div className="field" style={{ marginTop: 6 }}>
+          <label>
+            Pet-typ <span className="lbl-hint">— vilken glow-uppsättning som används</span>
+          </label>
+          <div className="tier-pick">
+            <label className={`tier-chip ${petType === "matt" ? "on" : ""}`} style={{ cursor: "pointer" }}>
+              <input type="radio" name="pettype" checked={petType === "matt"} onChange={() => setPetType("matt")} />
+              <span className="tier-name">Matt / päls</span>
+            </label>
+            <label className={`tier-chip ${petType === "shiny" ? "on" : ""}`} style={{ cursor: "pointer" }}>
+              <input type="radio" name="pettype" checked={petType === "shiny"} onChange={() => setPetType("shiny")} />
+              <span className="tier-name">Blank / metall</span>
+            </label>
+          </div>
+          <p className="hint" style={{ marginTop: 4 }}>
+            Matt för päls/hud (mjuk glow + accent). Blank för pansar/kristall/glansiga drakar (tonar
+            de hårda ytorna mot tier-färgen så nivåerna syns tydligt).
+          </p>
+        </div>
+
+        {autospriteEnabled && (
+          <div className="field" style={{ marginTop: 2 }}>
+            <label className="tier-chip" style={{ cursor: "pointer", display: "inline-flex" }}>
+              <input type="checkbox" checked={autosprite} onChange={(e) => setAutosprite(e.target.checked)} />
+              <span className="tier-name">🎞 Skicka även till AutoSprite (walk + idle)</span>
+            </label>
+            <p className="hint" style={{ marginTop: 4 }}>
+              Skickar den rena basen till ditt AutoSprite-konto och startar walk + idle där. Stäng av
+              för sådant som inte ska animeras (t.ex. fordon). Animationerna finslipas och laddas ner
+              på AutoSprite — de dras inte hem hit.
+            </p>
+          </div>
+        )}
+
         {/* tier picker */}
         <div className="field" style={{ marginTop: 6 }}>
           <label>
@@ -345,7 +388,7 @@ export default function RarityEditPanel() {
                 <input type="checkbox" checked={selected.has(t.name)} onChange={() => toggleTier(t.name)} />
                 <span className="swatch" style={{ background: t.color || "var(--muted)" }} />
                 <span className="tier-name">{t.name}</span>
-                {t.free && <span className="tier-free">gratis</span>}
+                {isFree(t) && <span className="tier-free">gratis</span>}
               </label>
             ))}
           </div>

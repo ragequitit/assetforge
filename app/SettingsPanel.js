@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RARITY_PALETTE, DEFAULT_RARITIES, RARITY_EDIT_INSTRUCTIONS } from "@/lib/prompt";
+import { RARITY_PALETTE, DEFAULT_RARITIES, RARITY_EDIT_INSTRUCTIONS, RARITY_EDIT_INSTRUCTIONS_SHINY } from "@/lib/prompt";
 
 export default function SettingsPanel({ activeName = "" }) {
   const [masterPrompt, setMasterPrompt] = useState("");
@@ -68,10 +68,13 @@ export default function SettingsPanel({ activeName = "" }) {
       setRarities(
         (Array.isArray(s.rarities) ? s.rarities : []).map((r) => ({
           ...r,
-          // Show the edit instruction that actually gets applied: use the stored
-          // one if present, otherwise the built-in default for that tier. Saving
-          // then makes it explicit for this loadout.
+          // Show the instruction that actually gets applied for each set: use the
+          // stored one if present, otherwise the built-in default for that tier.
           edit: typeof r.edit === "string" ? r.edit : RARITY_EDIT_INSTRUCTIONS[r.name] ?? "",
+          editShiny:
+            typeof r.editShiny === "string"
+              ? r.editShiny
+              : RARITY_EDIT_INSTRUCTIONS_SHINY[r.name] ?? "",
         }))
       );
       setCatDefaults(s.categoryDefaults || {});
@@ -144,6 +147,7 @@ export default function SettingsPanel({ activeName = "" }) {
   // colons inside the text (like "CRITICAL:") are left untouched. Only lines
   // whose leading word matches an existing rarity are used; blanks are ignored.
   const [editBlock, setEditBlock] = useState("");
+  const [editBlockTarget, setEditBlockTarget] = useState("edit"); // 'edit' = matt, 'editShiny' = shiny
   const importEditBlock = () => {
     const nameMap = new Map(
       rarities.filter((r) => (r.name || "").trim()).map((r) => [r.name.toLowerCase(), r.name])
@@ -161,8 +165,10 @@ export default function SettingsPanel({ activeName = "" }) {
     if (hit.length === 0) {
       return flash(false, "Hittade inga rader på formen “Tier → text”. Kolla att tier-namnen stämmer.");
     }
-    setRarities((prev) => prev.map((r) => (parsed[r.name] !== undefined ? { ...r, edit: parsed[r.name] } : r)));
-    flash(true, `Fyllde Edit på: ${hit.join(", ")}. Granska och tryck Spara rarities.`);
+    const field = editBlockTarget === "editShiny" ? "editShiny" : "edit";
+    setRarities((prev) => prev.map((r) => (parsed[r.name] !== undefined ? { ...r, [field]: parsed[r.name] } : r)));
+    const setLabel = field === "editShiny" ? "Blank/metall" : "Matt/päls";
+    flash(true, `Fyllde ${setLabel}-Edit på: ${hit.join(", ")}. Granska och tryck Spara rarities.`);
   };
 
   function onPickReference(e) {
@@ -285,22 +291,42 @@ export default function SettingsPanel({ activeName = "" }) {
         <label>Rarities</label>
         <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
           Dina rarity-nivåer. <em>Look</em> = vad nivån gör när en bild <strong>genereras från
-          scratch</strong> (vävs in i prompten). <em>Edit</em> = vad nivån lägger på i fliken{" "}
-          <strong>Rarity-tiers</strong> när den redigerar en <strong>befintlig basbild</strong> —
-          lämna Edit tom för “kopiera basen rakt igenom” (gratis, ingen glow). Lägg gärna till egna
-          nivåer (t.ex. <strong>Shadow</strong>) med egen Edit-text — de dyker då upp att välja i
-          Rarity-tiers. <strong>None</strong> lämnas tom. Dra i <span aria-hidden="true">⠿</span>{" "}
-          för att ändra ordning — tryck sedan Spara.
+          scratch</strong>. <em>Edit (matt/päls)</em> och <em>Edit (blank/metall)</em> = vad nivån
+          lägger på i <strong>Rarity-tiers</strong> — Pet-typ-väljaren där väljer vilken som
+          används (matt för päls/hud, blank för pansar/kristall/metall). Lämna Edit tom = “kopiera
+          basen” (gratis). Lägg gärna till egna nivåer (t.ex. <strong>Shadow</strong>) med egen
+          Edit-text. <strong>None</strong> lämnas tom. Dra i <span aria-hidden="true">⠿</span> för
+          att ändra ordning — tryck sedan Spara.
         </p>
 
         <details className="edit-import">
           <summary>📋 Klistra in alla edit-instruktioner på en gång</summary>
           <p className="hint" style={{ marginTop: 8 }}>
             En rad per tier på formen <code>Tier → text</code> (även <code>Tier: text</code> går).
-            Bara Edit-fälten fylls; Look och färg rörs inte. <strong>Common</strong> brukar lämnas
-            tom (gratis kopia) — töm Common-fältet efter import om du vill ha gratis-versionen.
-            Fyller bara i — inget sparas förrän du trycker <em>Spara rarities</em>.
+            Välj vilken uppsättning raderna ska fylla. Bara det Edit-fältet fylls; Look och färg
+            rörs inte. <strong>Common</strong> brukar lämnas tom (gratis kopia). Inget sparas förrän
+            du trycker <em>Spara rarities</em>.
           </p>
+          <div className="row" style={{ marginBottom: 8 }}>
+            <label className="tier-chip" style={{ cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="edit-target"
+                checked={editBlockTarget === "edit"}
+                onChange={() => setEditBlockTarget("edit")}
+              />
+              <span className="tier-name">Matt/päls</span>
+            </label>
+            <label className="tier-chip" style={{ cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="edit-target"
+                checked={editBlockTarget === "editShiny"}
+                onChange={() => setEditBlockTarget("editShiny")}
+              />
+              <span className="tier-name">Blank/metall</span>
+            </label>
+          </div>
           <textarea
             className="edit-import-box"
             rows={6}
@@ -349,13 +375,22 @@ export default function SettingsPanel({ activeName = "" }) {
               />
               <button className="icon-btn" title="Ta bort" onClick={() => removeRar(i)}>×</button>
               {!isNone && (
-                <textarea
-                  className="rarity-edit"
-                  rows={2}
-                  placeholder="edit — vad som läggs på basbilden i Rarity-tiers (lämna tom = kopiera basen, gratis)"
-                  value={r.edit || ""}
-                  onChange={(e) => setRar(i, "edit", e.target.value)}
-                />
+                <>
+                  <textarea
+                    className="rarity-edit"
+                    rows={2}
+                    placeholder="Edit (matt/päls) — vad som läggs på basbilden i Rarity-tiers (tom = kopiera basen, gratis)"
+                    value={r.edit || ""}
+                    onChange={(e) => setRar(i, "edit", e.target.value)}
+                  />
+                  <textarea
+                    className="rarity-edit shiny"
+                    rows={2}
+                    placeholder="Edit (blank/metall) — för bepansrade/kristall/glansiga pets (tom = kopiera basen)"
+                    value={r.editShiny || ""}
+                    onChange={(e) => setRar(i, "editShiny", e.target.value)}
+                  />
+                </>
               )}
             </div>
           );

@@ -9,19 +9,28 @@ export const dynamic = "force-dynamic";
 export async function POST(req) {
   try {
     await initSchema();
-    const { id, restore, permanent } = await req.json();
-    if (!id) return NextResponse.json({ error: "id saknas." }, { status: 400 });
+    const body = await req.json();
+    const { id, ids, restore, permanent } = body || {};
+    // Accept a single id or an array of ids (bulk delete/restore).
+    const list = (Array.isArray(ids) ? ids : id != null ? [id] : []).filter((x) => x != null);
+    if (list.length === 0) return NextResponse.json({ error: "id saknas." }, { status: 400 });
     const p = getPool();
 
     if (permanent) {
-      const r = await p.query(`DELETE FROM jobs WHERE id=$1`, [id]);
+      const r = await p.query(`DELETE FROM jobs WHERE id = ANY($1::bigint[])`, [list]);
       return NextResponse.json({ deleted: r.rowCount, permanent: true });
     }
     if (restore) {
-      const r = await p.query(`UPDATE jobs SET deleted_at=NULL WHERE id=$1`, [id]);
+      const r = await p.query(
+        `UPDATE jobs SET deleted_at=NULL WHERE id = ANY($1::bigint[])`,
+        [list]
+      );
       return NextResponse.json({ restored: r.rowCount });
     }
-    const r = await p.query(`UPDATE jobs SET deleted_at=now() WHERE id=$1`, [id]);
+    const r = await p.query(
+      `UPDATE jobs SET deleted_at=now() WHERE id = ANY($1::bigint[])`,
+      [list]
+    );
     return NextResponse.json({ trashed: r.rowCount });
   } catch (err) {
     console.error(err);

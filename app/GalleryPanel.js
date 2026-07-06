@@ -224,6 +224,52 @@ export default function GalleryPanel({ includeRarity = true }) {
     }
   }
 
+  function selectAllFiltered() {
+    setSelected(new Set(filtered.map((a) => a.id)));
+  }
+
+  // Bulk soft-delete every selected asset in one request, then offer Undo.
+  async function deleteSelected() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (!confirm(`Flytta ${ids.length} bilder till papperskorgen?`)) return;
+    try {
+      const res = await fetch("/api/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error("Kunde inte ta bort.");
+      setData((prev) => ({
+        ...prev,
+        assets: prev.assets.filter((x) => !selected.has(x.id)),
+        count: Math.max(0, prev.count - ids.length),
+      }));
+      setSelected(new Set());
+      setStatus({
+        kind: "ok",
+        text: `${ids.length} bilder flyttade till papperskorgen.`,
+        action: { label: "Ångra", fn: () => restoreMany(ids) },
+      });
+    } catch (err) {
+      setStatus({ kind: "err", text: err.message });
+    }
+  }
+
+  async function restoreMany(ids) {
+    try {
+      await fetch("/api/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, restore: true }),
+      });
+      setStatus({ kind: "ok", text: `${ids.length} bilder återställda.` });
+      load();
+    } catch (err) {
+      setStatus({ kind: "err", text: err.message });
+    }
+  }
+
   async function downloadSelected() {
     setDownloading(true);
     setStatus(null);
@@ -339,6 +385,16 @@ export default function GalleryPanel({ includeRarity = true }) {
       {selectMode && !trashMode && (
         <div className="select-bar">
           <span>{selected.size} valda</span>
+          <button className="btn-ghost small" onClick={selectAllFiltered} disabled={filtered.length === 0}>
+            Välj alla ({filtered.length})
+          </button>
+          <button
+            className="btn-ghost small danger"
+            onClick={deleteSelected}
+            disabled={selected.size === 0}
+          >
+            🗑 Ta bort valda ({selected.size})
+          </button>
           <button
             className="btn-primary small"
             onClick={makeSpriteSheet}
@@ -356,7 +412,6 @@ export default function GalleryPanel({ includeRarity = true }) {
           {selected.size > 0 && (
             <button className="btn-ghost small" onClick={() => setSelected(new Set())}>Rensa val</button>
           )}
-          <span className="hint" style={{ margin: 0 }}>Välj minst 2 assets att packa ihop.</span>
         </div>
       )}
 
